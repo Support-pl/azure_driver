@@ -10,74 +10,264 @@ else
     ETC_LOCATION      = ONE_LOCATION + "/etc/" if !defined?(ETC_LOCATION)
 end
 
+$: << RUBY_LIB_LOCATION
+
 AZ_DRIVER_CONF = "#{ETC_LOCATION}/az_driver.conf"
 AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/az_driver.default"
 
 require 'yaml'
 require 'ms_rest_azure'
-# require 'azure_sdk'
+require 'azure_sdk'
+require 'opennebula'
+require 'VirtualMachineDriver'
 
 module AzureDriver
-    @account = YAML::load(File.read(AZ_DRIVER_CONF))
-    _regions = @account['regions']
-    _az = _regions['default']
-    subscription_id = _az['subscription_id']
-    tenant_id = _az['tenant_id']
-    client_id = _az['client_id']
-    client_secret = _az['client_secret']
-    provider = MsRestAzure::ApplicationTokenProvider.new(
-        tenant_id, #ENV['AZURE_TENANT_ID'],
-        client_id, #ENV['AZURE_CLIENT_ID'],
-        client_secret #ENV['AZURE_CLIENT_SECRET']
-    )
+    ACTION          = VirtualMachineDriver::ACTION
+    POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
+    VM_STATE        = VirtualMachineDriver::VM_STATE
 
-    credentials = MsRest::TokenCredentials.new(provider)
-    
-    Credentials = {
-        tenant_id: tenant_id,
-        client_id: client_id,
-        client_secret: client_secret,
-        subscription_id: subscription_id,
-        credentials: credentials
-    }
-    def self.auth
-        Credentials
+    def self.deploy
+    end
+    def self.poll id, host, deploy_id
+        begin
+            vm = Client.new(host).get_virtual_machine deploy_id
+
+            instance = Client.new(host).compute.mgmt.virtual_machines.get(
+                vm.id.split('/')[4], vm.name, expand:'instanceView'
+            )
+
+
+            info =  "#{POLL_ATTRIBUTE[:memory]}=0 " \
+                    "#{POLL_ATTRIBUTE[:cpu]}=0 " \
+                    "#{POLL_ATTRIBUTE[:nettx]}=0 " \
+                    "#{POLL_ATTRIBUTE[:netrx]}=0 "
+
+            state = ""
+            if !instance
+                state = VM_STATE[:deleted]
+            else
+                state = case instance.instance_view.statuses.last.code.split('/').last
+                when "running", "starting"
+                    VM_STATE[:active]
+                when "suspended", "deallocated",
+                    VM_STATE[:paused]
+                else
+                    VM_STATE[:unknown]
+                end
+            end
+            info << "#{POLL_ATTRIBUTE[:state]}=#{state} "
+
+            info
+
+        rescue
+        # Unknown state if exception occurs retrieving information from
+        # an instance
+            "#{POLL_ATTRIBUTE[:state]}=#{VM_STATE[:unknown]} "
+        end
     end
 
-    ### Virtual Machines ###
-    def self.mk_virtual_machine opts
+    class Client < Azure::Profiles::Latest::Client
+        def initialize(host)
+            @account = YAML::load(File.read(AZ_DRIVER_CONF))
+            _regions = @account['regions']
+            _az = _regions[host] || _regions['default']
+            subscription_id = _az['subscription_id']
+            tenant_id = _az['tenant_id']
+            client_id = _az['client_id']
+            client_secret = _az['client_secret']
+            provider = MsRestAzure::ApplicationTokenProvider.new(
+                tenant_id, #ENV['AZURE_TENANT_ID'],
+                client_id, #ENV['AZURE_CLIENT_ID'],
+                client_secret #ENV['AZURE_CLIENT_SECRET']
+            )
+
+            credentials = MsRest::TokenCredentials.new(provider)
+
+            @options = {
+                tenant_id: tenant_id,
+                client_id: client_id,
+                client_secret: client_secret,
+                subscription_id: subscription_id ,
+                 credentials: credentials
+            }
+
+            super(@options)
+        end
+        def auth host = nil
+            @options
+        end
+
+        ### Virtual Machines ###
+
+        # @param [Hash] opts
+        # @option opts [String] :name - 
+        # @option opts [String] :rg_name - 
+        # @option opts [String] :username - 
+        # @option opts [String] :passwd - 
+        # @option opts [String] :hostname - 
+        # @option opts [String] :plan - 
+        # @option opts [String] :location - 
+        # @option opts [NetworkProfile] :network_profile - 
+        # @option opts [String] :name - 
+        def mk_virtual_machine opts = {}
+            # Include SDK modules to ease access to compute classes.
+            # include Azure::Compute::Profiles::Latest::Mgmt
+            # include Azure::Compute::Mgmt::V2018_04_01::Models
+
+            # Create a model for new virtual machine
+            props = compute.mgmt.model_classes.virtual_machine.new
+
+            # windows_config = WindowsConfiguration.new
+            # windows_config.provision_vmagent = true
+            # windows_config.enable_automatic_updates = true
+
+            os_profile = compute.mgmt.model_classes.osprofile.new
+            os_profile.computer_name = 'azure-vm'
+            os_profile.admin_username = opts[:username]
+            os_profile.admin_password = opts[:passwd]
+            # os_profile.windows_configuration = windows_config
+            os_profile.secrets = []
+            props.os_profile = os_profile
+
+            hardware_profile = compute.mgmt.model_classes.hardware_profile.new
+            hardware_profile.vm_size = opts[:plan]
+            props.hardware_profile = hardware_profile
+
+            # create_storage_profile it is hypotetical helper method which creates storage
+            # profile by means of ARM Storage SDK.
+            props.storage_profile = opts[:storage_profile]
+
+            # create_storage_profile it is hypotetical helper method which creates network
+            # profile my means of ARM Network SDK.
+            props.network_profile = opts[:network_profile] # create_network_profile
+
+            props.type = 'Microsoft.Compute/virtualMachines'
+            props.location = opts[:location]
+
+            compute.mgmt.virtual_machines.create_or_update(opts[:rg_name], opts[:name], props)
+        end
+        def get_virtual_machine deploy_id
+            compute.mgmt.virtual_machines.list_all.detect do |vm|
+                vm.vm_id == deploy_id
+            end
+        end
+
+
+        def generate_storage_profile image
+            storage_profile = compute.mgmt.model_classes.storage_profile.new
+
+            img_ref = compute.mgmt.model_classes.image_reference.new
+            img_ref.publisher = image[:publisher]
+            img_ref.offer = image[:name]
+            img_ref.sku = image[:version]
+            img_ref.version = 'latest'
+            storage_profile.image_reference = img_ref
+
+            storage_profile  
+            #<Azure::Compute::Mgmt::V2018_06_01::Models::StorageProfile 
+            #   @image_reference=
+            #   <Azure::Compute::Mgmt::V2018_06_01::Models::ImageReference
+            #       @publisher="Canonical", @offer="UbuntuServer", @sku="16.04-LTS", @version="latest">,
+            #   @os_disk=
+            #   <Azure::Compute::Mgmt::V2018_06_01::Models::OSDisk
+            #       @os_type="Linux", @name="testo666-vm_OsDisk_1_3b4fc0155c57430aa6d204db366cf883",
+            #       @caching="ReadWrite", @create_option="FromImage", 
+            #       @managed_disk=
+            #       <Azure::Compute::Mgmt::V2018_06_01::Models::ManagedDiskParameters 
+            #           @id="/subscriptions/bbdbf5e9-e9ed-4cbd-859a-7377f31b9b9d/resourceGroups/spbywesteurope/providers/Microsoft.Compute/disks/testo666-vm_OsDisk_1_3b4fc0155c57430aa6d204db366cf883">
+            #       >,
+            #       @data_disks=[]
+            #>
+        end
+
+        ### Resource groups  ###
+        def mk_resource_group name, location
+
+            resource_group = resources.mgmt.model_classes.resource_group.new
+            resource_group.location = location
+
+            resources.mgmt.resource_groups.create_or_update(name, resource_group)
+        end
+
+        ### Storage Accounts ###
+        def mk_storage_account name, rg_name, location, sku_name, sku_kind = "Storage"
         
-    end
-
-    ### Resource groups  ###
-    def self.mk_resource_group name, location
-        require 'azure_mgmt_resources'
-
-        include Azure::Resources::Profiles::Latest::Mgmt
-        include Azure::Resources::Mgmt::V2018_02_01::Models
-
-        resource_group = ResourceGroup.new()
-        resource_group.location = location
-
-        Client.new( auth ).resource_groups.create_or_update(name, resource_group)
-    end
-
-    ### Storage Accounts ###
-    def self.mk_storage_account name, rg_name, location, sku_name  
-        require 'azure_mgmt_storage'      
+            params = storage.mgmt.model_classes.storage_account_create_parameters.new
+            params.location = location
+            sku = storage.mgmt.model_classes.sku.new
+            sku.name = sku_name
+            params.sku = sku
+            params.kind = sku_kind || "Storage"
         
-        include Azure::Storage::Profiles::Latest::Mgmt
-        include Azure::Storage::Mgmt::V2018_02_01::Models
-    
-        params = StorageAccountCreateParameters.new
-        params.location = location
-        sku = Sku.new
-        sku.name = sku_name
-        params.sku = sku
-        params.kind = Kind::Storage
-    
-        Client.new( auth ).storage_accounts.create(
-            rg_name, name, params
-        )
+            storage.mgmt.storage_accounts.create(
+                rg_name, name, params
+            )
+        end
+
+        ### Virtual Networks ###
+        # @param [Hash] opts
+        # @option opts [String] :name - 
+        # @option opts [String] :rg_name - 
+        # @option opts [String] :subnet - (Optional)
+        # @option opts [String] :subnet_prefix - (Optional)
+        # @option opts [String] :location - 
+        # @option opts [Array] :prefixes - (Optional)
+        # @option opts [Array] :dns - (Optional)
+        def mk_virtual_network opts = {}
+
+            params = network.mgmt.model_classes.virtual_network.new
+
+            address_space = network.mgmt.model_classes.address_space.new
+            address_space.address_prefixes = opts[:spaces] || ['10.0.0.0/16']
+            params.address_space = address_space
+
+            dhcp_options = network.mgmt.model_classes.dhcp_options.new
+            dhcp_options.dns_servers = opts[:dns] || %w(8.8.8.8 8.8.4.4)
+            params.dhcp_options = dhcp_options
+
+            sub = network.mgmt.model_classes.subnet.new
+            sub.name = opts[:subnet] || 'default'
+            sub.address_prefix = opts[:subnet_prefix] || '10.0.2.0/24'
+
+            params.subnets = [sub]
+
+            params.location = opts[:location]
+
+            vnet = network.mgmt.virtual_networks.create_or_update(opts[:rg_name], opts[:name], params)
+            vnet.subnets.first
+        end
+        def get_virtual_network name, rg_name
+
+            network.mgmt.virtual_networks.get rg_name, name
+
+        end
+        def mk_network_interface name, rg_name, subnet, location
+
+            nic = network.mgmt.model_classes.network_interface.new
+
+            ip_conf = network.mgmt.model_classes.network_interface_ipconfiguration.new
+            ip_conf.name = rg_name
+            ip_conf.subnet = subnet
+            nic.ip_configurations = [ip_conf]
+
+            nic.location = location
+
+            network.mgmt.network_interfaces.create_or_update(
+                rg_name, name, nic
+            )
+        end
+
+        def generate_network_profile iface
+            profile = compute.mgmt.model_classes.network_profile.new
+
+            iface_ref = compute.mgmt.model_classes.network_interface_reference.new
+            iface_ref.id = iface.id
+
+            profile.network_interfaces = [
+                iface_ref
+            ]
+            profile
+        end
     end
 end
+#AzureDriver.get_virtual_network 'spbywesteurope', 'test666-vnet'
