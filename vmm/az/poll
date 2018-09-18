@@ -80,7 +80,7 @@ result =
             state = case instance.instance_view.statuses.last.code.split('/').last
             when "running", "starting"
                 VM_STATE[:active]
-            when "suspended", "deallocated",
+            when "suspended", "deallocated"
                 VM_STATE[:paused]
             else
                 VM_STATE[:unknown]

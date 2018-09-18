@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+
+
+ONE_LOCATION = ENV["ONE_LOCATION"] if !defined?(ONE_LOCATION)
+
+if !ONE_LOCATION
+    RUBY_LIB_LOCATION = "/usr/lib/one/ruby" if !defined?(RUBY_LIB_LOCATION)
+    ETC_LOCATION      = "/etc/one/" if !defined?(ETC_LOCATION)
+else
+    RUBY_LIB_LOCATION = ONE_LOCATION + "/lib/ruby" if !defined?(RUBY_LIB_LOCATION)
+    ETC_LOCATION      = ONE_LOCATION + "/etc/" if !defined?(ETC_LOCATION)
+end
+
+$: << RUBY_LIB_LOCATION
+
+require 'opennebula'
+
+hp = OpenNebula::HostPool.new(OpenNebula::Client.new)
+hp.info_all
+
+host = hp.detect { |host| host.name == ARGV[-1] }
+
+result = ""
+
+vms = host.to_hash['HOST']['VMS']['ID']
+
+vms = [vms] if vms.class != Array
+
+vms.each do | id |
+    vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
+    vm.info!
+
+    poll = `/var/lib/one/remotes/vmm/az/poll #{vm.deploy_id} #{host.name} #{id} #{host.name}`
+
+    result <<
+    "VM = [\n" \
+    "ID=\"#{id}\"\n" \
+    "DEPLOY_ID=\"#{vm.deploy_id}\"\n" \
+    "POLL=\"#{poll}\"\n" \
+    "CPU=1\n" \
+    "MEMORY=756\n" \
+    "]\n"
+end
+
+begin
+    puts result
+rescue => e
+    STDERR.puts "Error monitoring Azure host: #{e.message}"
+    exit -1
+end
