@@ -13,12 +13,13 @@ end
 
 $: << RUBY_LIB_LOCATION
 
-require 'opennebula'
+require 'azure_driver'
 
 hp = OpenNebula::HostPool.new(OpenNebula::Client.new)
 hp.info_all
 
 host = hp.detect { |host| host.name == ARGV[-1] }
+client = AzureDriver::Client.new(ARGV[-1])
 
 result = ""
 
@@ -27,19 +28,28 @@ vms = host.to_hash['HOST']['VMS']['ID']
 vms = [vms] if vms.class != Array
 
 vms.each do | id |
-    vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
-    vm.info!
+    begin
+        vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
+        vm.info!
 
-    poll = `/var/lib/one/remotes/vmm/az/poll #{vm.deploy_id} #{host.name} #{id} #{host.name}`
+        poll, poll_data = client.poll vm.deploy_id
 
-    result <<
-    "VM = [\n" \
-    "ID=\"#{id}\"\n" \
-    "DEPLOY_ID=\"#{vm.deploy_id}\"\n" \
-    "POLL=\"#{poll}\"\n" \
-    "CPU=1\n" \
-    "MEMORY=756\n" \
-    "]\n"
+        result <<
+            "VM = [\n" \
+            "ID=\"#{id}\",\n" \
+            "DEPLOY_ID=\"#{vm.deploy_id}\",\n" \
+            "POLL=\"#{poll}\",\n" \
+            "CPU=\"#{poll_data[:cpu]}\",\n" \
+            "MEMORY=\"#{poll_data[:memory]}\"\n" \
+            "]\n"
+        
+    rescue
+        result <<
+            "VM = [\n" \
+            "ID=\"#{id}\",\n" \
+            "POLL=\"STATE=-\"\n" \
+            "]\n"
+    end
 end
 
 begin

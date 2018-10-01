@@ -11,8 +11,7 @@ end
 $: << RUBY_LIB_LOCATION
 $: << File.dirname(__FILE__)
 
-require 'azure_driver'
-require 'pry'
+require 'opennebula'
 
 dfile = ARGV[0]
 host  = ARGV[1]
@@ -20,49 +19,68 @@ id    = ARGV[2]
 
 vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
 vm.info!
-
 vm_name = "one-#{id}-#{vm.name}"
 lcm_state = vm.lcm_state_str
 deploy_id = vm.deploy_id
-cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD'] #==)
 
-rg_name = cloud["RESOURCE_GROUP"]
-subnet = cloud["SUBNET"]
-location = cloud["LOCATION"].downcase.delete(' ')
+if lcm_state == 'BOOT' || lcm_state == 'BOOT_FAILURE' then
 
-az_drv = AzureDriver::Client.new(host)
+    require 'azure_driver'
 
-# Create resource group
-az_drv.mk_resource_group rg_name, location
-# Create vnet
-subnet = az_drv.mk_virtual_network({
-    :location => location,
-    :rg_name => rg_name,
-    :name => rg_name + '-vnet',
-    :subnet => subnet
-})
+    cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']
 
-# Create iface
-iface = az_drv.mk_network_interface (rg_name + '-iface'), rg_name, subnet, location
-# Create net profile
-network_profile = az_drv.generate_network_profile iface
-# Create storage profile
-storage_profile = az_drv.generate_storage_profile({
-        :publisher => 'Canonical',
-        :name => 'UbuntuServer',
-        :version => '16.04-LTS'
-}) 
+    rg_name = cloud["RESOURCE_GROUP"]
+    subnet = cloud["SUBNET"]
+    location = cloud["LOCATION"].downcase.delete(' ')
+
+    az_drv = AzureDriver::Client.new(host)
+
+    size = az_drv.get_virtual_machine_size cloud['INSTANCE_TYPE'], location
+
+    conf =
+    "CONTEXT=[\n" \
+    "  DISK_SIZE=\"#{size.os_disk_size_in_mb}\",\n" \
+    "  VCPU=\"#{size.number_of_cores + 1}\",\n" \
+    "  MEMORY=\"#{size.memory_in_mb}\"]\n"
+
+    vm.updateconf(conf)
+
+    # Create resource group
+    az_drv.mk_resource_group rg_name, location
+    # Create vnet
+    subnet = az_drv.mk_virtual_network({
+        :location => location,
+        :rg_name => rg_name,
+        :name => rg_name + '-vnet',
+        :subnet => subnet
+    })
+
+    # Create iface
+    iface = az_drv.mk_network_interface (rg_name + vm.id.to_s + '-iface'), rg_name, subnet, location
+    # Create net profile
+    network_profile = az_drv.generate_network_profile iface
+    # Create storage profile
+    storage_profile = az_drv.generate_storage_profile({
+            :publisher => 'Canonical',
+            :name => 'UbuntuServer',
+            :version => '16.04-LTS'
+    }) 
 
 
-# Create VM
-begin
-    puts az_drv.mk_virtual_machine({
-        :name => vm_name, :rg_name => rg_name, :location => location,
-        :plan => 'Standard_A0', :hostname => cloud['VM_COMPUTER_NAME'], :username => cloud['VM_USER'],
-        :passwd => cloud['VM_PASSWORD'], 
-        :network_profile => network_profile, :storage_profile => storage_profile
-    }).vm_id
-rescue => e
-    STDERR.puts "Error deploying Azure VM: #{e.message}\nBackTrace:\n#{e.backtrace}"
-    exit -1
+    # Create VM
+    begin
+        puts az_drv.mk_virtual_machine({
+            :name => vm_name, :rg_name => rg_name, :location => location,
+            :plan => cloud['INSTANCE_TYPE'], :hostname => cloud['VM_COMPUTER_NAME'],
+            :username => cloud['VM_USER'], :passwd => cloud['VM_PASSWORD'], 
+            :network_profile => network_profile, :storage_profile => storage_profile
+        }).vm_id
+    rescue => e
+        STDERR.puts "Error deploying Azure VM: #{e.message}\nBackTrace:\n#{e.backtrace}"
+        exit -1
+    end
+elsif deploy_id then
+    puts deploy_id
+else
+    puts 'Not now, sorry'
 end

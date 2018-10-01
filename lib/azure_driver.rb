@@ -17,7 +17,12 @@ AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/az_driver.default"
 
 require 'yaml'
 require 'ms_rest_azure'
+
+`gem list | grep azure_mgmt_`.gsub(/\(.+\)\n/, '').split(' ').each do | gem |
+    require gem
+end
 require 'azure_sdk'
+
 require 'opennebula'
 require 'VirtualMachineDriver'
 
@@ -27,43 +32,6 @@ module AzureDriver
     VM_STATE        = VirtualMachineDriver::VM_STATE
 
     def self.deploy
-    end
-    def self.poll id, host, deploy_id
-        begin
-            vm = Client.new(host).get_virtual_machine deploy_id
-
-            instance = Client.new(host).compute.mgmt.virtual_machines.get(
-                vm.id.split('/')[4], vm.name, expand:'instanceView'
-            )
-
-
-            info =  "#{POLL_ATTRIBUTE[:memory]}=0 " \
-                    "#{POLL_ATTRIBUTE[:cpu]}=0 " \
-                    "#{POLL_ATTRIBUTE[:nettx]}=0 " \
-                    "#{POLL_ATTRIBUTE[:netrx]}=0 "
-
-            state = ""
-            if !instance
-                state = VM_STATE[:deleted]
-            else
-                state = case instance.instance_view.statuses.last.code.split('/').last
-                when "running", "starting"
-                    VM_STATE[:active]
-                when "suspended", "deallocated",
-                    VM_STATE[:paused]
-                else
-                    VM_STATE[:unknown]
-                end
-            end
-            info << "#{POLL_ATTRIBUTE[:state]}=#{state} "
-
-            info
-
-        rescue
-        # Unknown state if exception occurs retrieving information from
-        # an instance
-            "#{POLL_ATTRIBUTE[:state]}=#{VM_STATE[:unknown]} "
-        end
     end
 
     class Client < Azure::Profiles::Latest::Client
@@ -149,6 +117,11 @@ module AzureDriver
         def get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.list_all.detect do |vm|
                 vm.vm_id == deploy_id
+            end
+        end
+        def get_virtual_machine_size size_name, location
+            compute.mgmt.virtual_machine_sizes.list( location ).value.detect do |size| 
+                size.name == size_name
             end
         end
 
@@ -267,6 +240,81 @@ module AzureDriver
                 iface_ref
             ]
             profile
+        end
+
+        ### Monitoring ###
+        def poll deploy_id
+            begin
+                vm = compute.mgmt.virtual_machines.list_all.detect do |vm|
+                    vm.vm_id == deploy_id
+                end
+                instance = compute.mgmt.virtual_machines.get(
+                    vm.id.split('/')[4], vm.name, expand:'instanceView'
+                )
+        
+                cpu = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Percentage CPU', result_type: 'Data'
+                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last.average
+                memory = 768
+                nettx = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Network In', result_type: 'Data'
+                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last.total
+                netrx = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Network Out', result_type: 'Data'
+                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last.total
+                disk_rbytes = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Disk Read Bytes', result_type: 'Data'
+                ).value.first.timeseries.first.data.last.total.to_f
+                disk_wbytes = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Disk Write Bytes', result_type: 'Data'
+                ).value.first.timeseries.first.data.last.total.to_f
+                disk_riops = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Disk Read Operations/Sec', result_type: 'Data'
+                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last.average * 60
+                disk_wiops = monitor.mgmt.metrics.list(
+                    vm.id, metricnames: 'Disk Write Operations/Sec', result_type: 'Data'
+                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last.average * 60
+                
+        
+                info =  "#{POLL_ATTRIBUTE[:memory]}=#{memory * 1024} " \
+                        "#{POLL_ATTRIBUTE[:cpu]}=#{cpu * 10} " \
+                        "#{POLL_ATTRIBUTE[:nettx]}=#{nettx} " \
+                        "#{POLL_ATTRIBUTE[:netrx]}=#{netrx} " \
+                        "DISKRDBYTES=#{disk_rbytes} " \
+                        "DISKWRBYTES=#{disk_wbytes} " \
+                        "DISKRDIOPS=#{disk_riops} " \
+                        "DISKWRIOPS=#{disk_wiops} "
+        
+                # NETRX=126493122560 NETTX=13264445440    
+        
+                state = ""
+                if !instance
+                    state = VM_STATE[:deleted]
+                else
+                    state = case instance.instance_view.statuses.last.code.split('/').last
+                    when "running", "starting"
+                        VM_STATE[:active]
+                    when "suspended", "deallocated"
+                        VM_STATE[:paused]
+                    else
+                        VM_STATE[:unknown]
+                    end
+                end
+        
+        
+                info << "#{POLL_ATTRIBUTE[:state]}=#{state} "
+        
+                return info, { 
+                    :cpu => cpu, :memory => memory, 
+                    :nettx => nettx, :netrx => netrx, 
+                    :disk_rbytes => disk_rbytes, :disk_wbytes => disk_wbytes,
+                    :state => state }
+        
+            rescue => e
+            # Unknown state if exception occurs retrieving information from
+            # an instance
+                "#{POLL_ATTRIBUTE[:state]}=#{VM_STATE[:unknown]} "
+            end
         end
     end
 end

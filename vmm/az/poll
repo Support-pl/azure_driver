@@ -11,45 +11,14 @@ else
 end
 
 $: << RUBY_LIB_LOCATION
-$: << File.dirname(__FILE__)
 
-AZ_DRIVER_CONF = "#{ETC_LOCATION}/az_driver.conf"
-
-require 'yaml'
-require 'azure_mgmt_compute'
-require 'opennebula'
-require 'VirtualMachineDriver'
-require 'pry'
+require 'azure_driver'
 
 deploy_id = ARGV[0]
 host      = ARGV[1]
 id        = ARGV[2]
 
-### Azure Client ###
-@account = YAML::load(File.read(AZ_DRIVER_CONF))
-_regions = @account['regions']
-_az = _regions[host] || _regions['default']
-subscription_id = _az['subscription_id']
-tenant_id = _az['tenant_id']
-client_id = _az['client_id']
-client_secret = _az['client_secret']
-provider = MsRestAzure::ApplicationTokenProvider.new(
-    tenant_id, #ENV['AZURE_TENANT_ID'],
-    client_id, #ENV['AZURE_CLIENT_ID'],
-    client_secret #ENV['AZURE_CLIENT_SECRET']
-)
-
-credentials = MsRest::TokenCredentials.new(provider)
-
-options = {
-    tenant_id: tenant_id,
-    client_id: client_id,
-    client_secret: client_secret,
-    subscription_id: subscription_id ,
-     credentials: credentials
-}
-
-client = Azure::Compute::Profiles::Latest::Mgmt::Client.new(options)
+client = AzureDriver::Client.new(host)
 
 ### END ###
 
@@ -58,45 +27,8 @@ POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
 VM_STATE        = VirtualMachineDriver::VM_STATE
 ### END ###
 
-result = 
-    begin
-        vm = client.virtual_machines.list_all.detect do |vm|
-            vm.vm_id == deploy_id
-        end
-        instance = client.virtual_machines.get(
-            vm.id.split('/')[4], vm.name, expand:'instanceView'
-        )
 
-
-        info =  "#{POLL_ATTRIBUTE[:memory]}=0 " \
-                "#{POLL_ATTRIBUTE[:cpu]}=0 " \
-                "#{POLL_ATTRIBUTE[:nettx]}=0 " \
-                "#{POLL_ATTRIBUTE[:netrx]}=0 "
-
-        state = ""
-        if !instance
-            state = VM_STATE[:deleted]
-        else
-            state = case instance.instance_view.statuses.last.code.split('/').last
-            when "running", "starting"
-                VM_STATE[:active]
-            when "suspended", "deallocated"
-                VM_STATE[:paused]
-            else
-                VM_STATE[:unknown]
-            end
-        end
-
-
-        info << "#{POLL_ATTRIBUTE[:state]}=#{state} "
-
-        info
-
-    rescue => e
-    # Unknown state if exception occurs retrieving information from
-    # an instance
-        "#{POLL_ATTRIBUTE[:state]}=#{VM_STATE[:unknown]} "
-    end
+result, poll_data = client.poll deploy_id
 
 begin
     puts result
