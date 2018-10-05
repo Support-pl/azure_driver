@@ -12,8 +12,8 @@ end
 
 $: << RUBY_LIB_LOCATION
 
-AZ_DRIVER_CONF = "#{ETC_LOCATION}/az_driver.conf"
-AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/az_driver.default"
+AZ_DRIVER_CONF = "#{ETC_LOCATION}/azure_driver.conf"
+AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/azure_driver.default"
 
 require 'yaml'
 require 'ms_rest_azure'
@@ -124,7 +124,26 @@ module AzureDriver
                 size.name == size_name
             end
         end
-
+        def start_vm deploy_id
+            vm = get_virtual_machine deploy_id
+            compute.mgmt.virtual_machines.start(vm.id.split('/')[4], vm.name)
+            vm.vm_id
+        end
+        def stop_vm deploy_id
+            vm = get_virtual_machine deploy_id
+            compute.mgmt.virtual_machines.power_off(vm.id.split('/')[4], vm.name)
+            vm.vm_id
+        end
+        def restart_vm deploy_id
+            vm = get_virtual_machine deploy_id
+            compute.mgmt.virtual_machines.restart(vm.id.split('/')[4], vm.name)
+            vm.vm_id
+        end
+        def get_vm_deploy_id_by_one_id one_id
+            compute.mgmt.virtual_machines.list_all.detect do |vm|
+                vm.name.include? "one-#{one_id}-"
+            end.vm_id
+        end 
 
         def generate_storage_profile image
             storage_profile = compute.mgmt.model_classes.storage_profile.new

@@ -16,10 +16,17 @@ require 'az_driver'
 deploy_id = ARGV[0]
 file      = ARGV[1]
 host      = ARGV[2]
+calog = "File: #{__FILE__}\nARGV = #{ARGV.inspect}\n"
+File.open('/var/lib/one/remotes/vmm/az/call.log', 'a'){ |f| f.write calog }
 
-az_drv = AzureDriver.new(host)
+az_drv = AzureDriver::Client.new(host)
+
+if deploy_id == '-' then
+    deploy_id = az_drv.get_vm_deploy_id_by_one_id vm_id
+end
+
 begin
-    az_drv.save(deploy_id)
+    az_drv.stop_vm(deploy_id)
 rescue => e
     STDERR.puts "Error saving Azure VM [#{deploy_id}]: " + e.message
     exit -1

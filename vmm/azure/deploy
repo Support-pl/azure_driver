@@ -23,15 +23,15 @@ vm_name = "one-#{id}-#{vm.name}"
 lcm_state = vm.lcm_state_str
 deploy_id = vm.deploy_id
 
-if lcm_state == 'BOOT' || lcm_state == 'BOOT_FAILURE' then
+cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']
+
+rg_name = cloud["RESOURCE_GROUP"]
+subnet = cloud["SUBNET"]
+location = cloud["LOCATION"].downcase.delete(' ')
+
+if (lcm_state == 'BOOT' && deploy_id.nil?) || lcm_state == 'BOOT_FAILURE' then
 
     require 'azure_driver'
-
-    cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']
-
-    rg_name = cloud["RESOURCE_GROUP"]
-    subnet = cloud["SUBNET"]
-    location = cloud["LOCATION"].downcase.delete(' ')
 
     az_drv = AzureDriver::Client.new(host)
 
@@ -66,7 +66,6 @@ if lcm_state == 'BOOT' || lcm_state == 'BOOT_FAILURE' then
             :version => '16.04-LTS'
     }) 
 
-
     # Create VM
     begin
         puts az_drv.mk_virtual_machine({
@@ -80,7 +79,13 @@ if lcm_state == 'BOOT' || lcm_state == 'BOOT_FAILURE' then
         exit -1
     end
 elsif deploy_id then
-    puts deploy_id
+    require 'azure_driver'
+
+    az_drv = AzureDriver::Client.new(host)
+    if deploy_id == '-' then
+        deploy_id = az_drv.get_vm_deploy_id_by_one_id id
+    end
+    az_drv.start_vm(deploy_id)
 else
     puts 'Not now, sorry'
 end

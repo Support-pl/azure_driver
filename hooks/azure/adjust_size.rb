@@ -15,7 +15,7 @@ end
 $: << RUBY_LIB_LOCATION
 $: << File.dirname(__FILE__)
 
-AZ_DRIVER_CONF = "#{ETC_LOCATION}/az_driver.conf"
+AZ_DRIVER_CONF = "#{ETC_LOCATION}/azure_driver.conf"
 
 require 'opennebula'
 include OpenNebula

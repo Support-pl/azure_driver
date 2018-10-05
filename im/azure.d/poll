@@ -13,19 +13,22 @@ end
 
 $: << RUBY_LIB_LOCATION
 
-require 'azure_driver'
+require 'opennebula'
 
 hp = OpenNebula::HostPool.new(OpenNebula::Client.new)
 hp.info_all
 
 host = hp.detect { |host| host.name == ARGV[-1] }
+
+vms = host.to_hash['HOST']['VMS']['ID']
+vms = [vms].compact if vms.class != Array
+
+exit 0 if vms.empty?
+
+require 'azure_driver'
 client = AzureDriver::Client.new(ARGV[-1])
 
 result = ""
-
-vms = host.to_hash['HOST']['VMS']['ID']
-
-vms = [vms] if vms.class != Array
 
 vms.each do | id |
     begin
