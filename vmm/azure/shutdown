@@ -1,0 +1,51 @@
+#!/usr/bin/env ruby
+
+# -------------------------------------------------------------------------- #
+# Copyright 2018, IONe Cloud Project, Support.by                             #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+#--------------------------------------------------------------------------- #
+
+calog = "File: #{__FILE__}\nARGV = #{ARGV.inspect}\n"
+File.open('/var/lib/one/remotes/vmm/azure/call.log', 'a'){ |f| f.write calog }
+
+ONE_LOCATION=ENV["ONE_LOCATION"] if !defined?(ONE_LOCATION)
+
+if !ONE_LOCATION
+    RUBY_LIB_LOCATION="/usr/lib/one/ruby" if !defined?(RUBY_LIB_LOCATION)
+else
+    RUBY_LIB_LOCATION=ONE_LOCATION+"/lib/ruby" if !defined?(RUBY_LIB_LOCATION)
+end
+
+$: << RUBY_LIB_LOCATION
+$: << File.dirname(__FILE__)
+
+require 'azure_driver'
+
+deploy_id = ARGV[0]
+host      = ARGV[1]
+vm_id     = ARGV[-2]
+
+az_drv = AzureDriver::Client.new(host)
+
+if deploy_id == '-' then
+    deploy_id = az_drv.get_vm_deploy_id_by_one_id vm_id
+end
+
+begin
+    az_drv.stop_vm(deploy_id)
+rescue => e
+    STDERR.puts "Error shutting down Azure VM [#{deploy_id}]: " + e.message
+    exit -1
+end
+
