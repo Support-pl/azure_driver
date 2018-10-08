@@ -269,14 +269,20 @@ module AzureDriver
         
                 cpu = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Percentage CPU', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last.average
+                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
+                cpu = cpu.nil? ? 0 : cpu.average
+                
                 memory = 768
                 nettx = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Network In', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last.total
+                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last
+                nettx = nettx.nil? ? 0 : nettx.total
+
                 netrx = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Network Out', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last.total
+                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last
+                netrx = netrx.nil? ? 0 : netrx.total
+
                 disk_rbytes = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Disk Read Bytes', result_type: 'Data'
                 ).value.first.timeseries.first.data.last.total.to_f
@@ -285,10 +291,13 @@ module AzureDriver
                 ).value.first.timeseries.first.data.last.total.to_f
                 disk_riops = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Disk Read Operations/Sec', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last.average * 60
+                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
+                disk_riops = disk_riops.nil? ? 0.0 : disk_riops.average * 60
+                
                 disk_wiops = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Disk Write Operations/Sec', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last.average * 60
+                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
+                disk_wiops = disk_wiops.nil? ? 0.0 : disk_wiops.average * 60
                 
         
                 info =  "#{POLL_ATTRIBUTE[:memory]}=#{memory * 1024} " \
@@ -300,9 +309,7 @@ module AzureDriver
                         "DISKRDIOPS=#{disk_riops} " \
                         "DISKWRIOPS=#{disk_wiops} " \
                         "RESOURCE_GROUP_NAME=#{rg_name} "
-        
-                # NETRX=126493122560 NETTX=13264445440    
-        
+                
                 state = ""
                 if !instance
                     state = VM_STATE[:deleted]
