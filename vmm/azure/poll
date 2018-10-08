@@ -32,19 +32,15 @@ require 'azure_driver'
 
 deploy_id = ARGV[0]
 host      = ARGV[1]
-id        = ARGV[2]
+vm_id     = ARGV[2]
 
-client = AzureDriver::Client.new(host)
+az_drv = AzureDriver::Client.new(host)
 
-### END ###
+if deploy_id == '-' then
+    deploy_id = az_drv.get_vm_deploy_id_by_one_id vm_id
+end
 
-### setting ONe vars ### 
-POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
-VM_STATE        = VirtualMachineDriver::VM_STATE
-### END ###
-
-
-result, poll_data = client.poll deploy_id
+result, poll_data = az_drv.poll deploy_id
 
 begin
     puts result

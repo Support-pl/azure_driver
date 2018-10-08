@@ -45,7 +45,7 @@ rg_name = cloud["RESOURCE_GROUP"]
 subnet = cloud["SUBNET"]
 location = cloud["LOCATION"].downcase.delete(' ')
 
-if (lcm_state == 'BOOT' && deploy_id.nil?) || lcm_state == 'BOOT_FAILURE' then
+if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '--')) || lcm_state == 'BOOT_FAILURE' then
 
     require 'azure_driver'
 

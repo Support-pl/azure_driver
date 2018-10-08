@@ -41,7 +41,9 @@ vms = [vms].compact if vms.class != Array
 exit 0 if vms.empty?
 
 require 'azure_driver'
-client = AzureDriver::Client.new(ARGV[-1])
+
+subscription = host.to_hash['HOST']['TEMPLATE']['SUBSCRIPTION']	|| 'default'
+az_drv = AzureDriver::Client.new(subscription)
 
 result = ""
 
@@ -49,13 +51,18 @@ vms.each do | id |
     begin
         vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
         vm.info!
+        deploy_id = vm.deploy_id
 
-        poll, poll_data = client.poll vm.deploy_id
+        if deploy_id == '-' then
+            deploy_id = az_drv.get_vm_deploy_id_by_one_id id
+        end
+
+        poll, poll_data = az_drv.poll deploy_id
 
         result <<
             "VM = [\n" \
             "ID=\"#{id}\",\n" \
-            "DEPLOY_ID=\"#{vm.deploy_id}\",\n" \
+            "DEPLOY_ID=\"#{deploy_id}\",\n" \
             "POLL=\"#{poll}\",\n" \
             "CPU=\"#{poll_data[:cpu]}\",\n" \
             "MEMORY=\"#{poll_data[:memory]}\"\n" \

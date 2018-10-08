@@ -32,8 +32,6 @@ require 'az_driver'
 deploy_id = ARGV[0]
 file      = ARGV[1]
 host      = ARGV[2]
-calog = "File: #{__FILE__}\nARGV = #{ARGV.inspect}\n"
-File.open('/var/lib/one/remotes/vmm/az/call.log', 'a'){ |f| f.write calog }
 
 az_drv = AzureDriver::Client.new(host)
 
