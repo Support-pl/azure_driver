@@ -29,12 +29,18 @@ vm.info!
 require 'azure_mgmt_compute'
 require 'yaml'
 
+begin
+    size_name = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']['INSTANCE_TYPE']
+    location = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']['LOCATION'].downcase.delete(' ')
+    cloud_type = vm['/VM/USER_TEMPLATE/PUBLIC_CLOUD/TYPE']
+rescue
+    cloud_type = 'nil'
+end
 
-size_name = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']['INSTANCE_TYPE']
-location = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']['LOCATION'].downcase.delete(' ')
-cloud_type = vm['/VM/USER_TEMPLATE/PUBLIC_CLOUD/TYPE']
-
-exit 0 if cloud_type != 'AZURE'
+if cloud_type != 'AZURE' then
+    puts "Not Azure(ARM) VM, skipping."
+    exit 0
+end
 
 ### Set Azure ###
 @account = YAML::load(File.read(AZ_DRIVER_CONF))
