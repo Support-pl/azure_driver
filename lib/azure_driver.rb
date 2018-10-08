@@ -137,24 +137,27 @@ module AzureDriver
         end
         def start_vm deploy_id
             vm = get_virtual_machine deploy_id
-            compute.mgmt.virtual_machines.start(vm.id.split('/')[4], vm.name)
+            compute.mgmt.virtual_machines.start(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
         def stop_vm deploy_id
             vm = get_virtual_machine deploy_id
-            compute.mgmt.virtual_machines.power_off(vm.id.split('/')[4], vm.name)
+            compute.mgmt.virtual_machines.power_off(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
         def restart_vm deploy_id
             vm = get_virtual_machine deploy_id
-            compute.mgmt.virtual_machines.restart(vm.id.split('/')[4], vm.name)
+            compute.mgmt.virtual_machines.restart(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
         def get_vm_deploy_id_by_one_id one_id
             compute.mgmt.virtual_machines.list_all.detect do |vm|
                 vm.name.include? "one-#{one_id}-"
             end.vm_id
-        end 
+        end
+        def get_vm_rg_name vm
+            vm.id.split('/')[4]
+        end
 
         def generate_storage_profile image
             storage_profile = compute.mgmt.model_classes.storage_profile.new
@@ -261,11 +264,10 @@ module AzureDriver
         ### Monitoring ###
         def poll deploy_id
             begin
-                vm = compute.mgmt.virtual_machines.list_all.detect do |vm|
-                    vm.vm_id == deploy_id
-                end
+                vm = get_virtual_machine deploy_id
+                rg_name = get_vm_rg_name vm
                 instance = compute.mgmt.virtual_machines.get(
-                    vm.id.split('/')[4], vm.name, expand:'instanceView'
+                    rg_name, vm.name, expand:'instanceView'
                 )
         
                 cpu = monitor.mgmt.metrics.list(
@@ -299,7 +301,8 @@ module AzureDriver
                         "DISKRDBYTES=#{disk_rbytes} " \
                         "DISKWRBYTES=#{disk_wbytes} " \
                         "DISKRDIOPS=#{disk_riops} " \
-                        "DISKWRIOPS=#{disk_wiops} "
+                        "DISKWRIOPS=#{disk_wiops} " \
+                        "RESOURCE_GROUP_NAME=#{rg_name} "
         
                 # NETRX=126493122560 NETTX=13264445440    
         
@@ -318,7 +321,7 @@ module AzureDriver
                 end
         
         
-                info << "#{POLL_ATTRIBUTE[:state]}=#{state} "
+                info << "#{POLL_ATTRIBUTE[:state]}=#{state}"
         
                 return info, { 
                     :cpu => cpu, :memory => memory, 
