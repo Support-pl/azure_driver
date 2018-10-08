@@ -42,9 +42,6 @@ module AzureDriver
     POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
     VM_STATE        = VirtualMachineDriver::VM_STATE
 
-    def self.deploy
-    end
-
     class Client < Azure::Profiles::Latest::Client
         def initialize(host)
             @account = YAML::load(File.read(AZ_DRIVER_CONF))
