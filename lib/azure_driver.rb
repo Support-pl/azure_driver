@@ -33,12 +33,7 @@ AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/azure_driver.default"
 
 require 'yaml'
 require 'ms_rest_azure'
-
-`gem list | grep azure_mgmt_`.gsub(/\(.+\)\n/, '').split(' ').each do | gem |
-    require gem
-end
-require 'azure_sdk'
-
+require 'azure_driver/azure_sdk'
 require 'opennebula'
 require 'VirtualMachineDriver'
 
@@ -171,21 +166,7 @@ module AzureDriver
             img_ref.version = 'latest'
             storage_profile.image_reference = img_ref
 
-            storage_profile  
-            #<Azure::Compute::Mgmt::V2018_06_01::Models::StorageProfile 
-            #   @image_reference=
-            #   <Azure::Compute::Mgmt::V2018_06_01::Models::ImageReference
-            #       @publisher="Canonical", @offer="UbuntuServer", @sku="16.04-LTS", @version="latest">,
-            #   @os_disk=
-            #   <Azure::Compute::Mgmt::V2018_06_01::Models::OSDisk
-            #       @os_type="Linux", @name="testo666-vm_OsDisk_1_3b4fc0155c57430aa6d204db366cf883",
-            #       @caching="ReadWrite", @create_option="FromImage", 
-            #       @managed_disk=
-            #       <Azure::Compute::Mgmt::V2018_06_01::Models::ManagedDiskParameters 
-            #           @id="/subscriptions/bbdbf5e9-e9ed-4cbd-859a-7377f31b9b9d/resourceGroups/spbywesteurope/providers/Microsoft.Compute/disks/testo666-vm_OsDisk_1_3b4fc0155c57430aa6d204db366cf883">
-            #       >,
-            #       @data_disks=[]
-            #>
+            storage_profile
         end
 
         ### Resource groups  ###
