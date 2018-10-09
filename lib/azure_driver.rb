@@ -37,6 +37,8 @@ require 'azure_driver/azure_sdk'
 require 'opennebula'
 require 'VirtualMachineDriver'
 
+require 'azure_driver/wild_vms'
+
 module AzureDriver
     ACTION          = VirtualMachineDriver::ACTION
     POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
@@ -127,6 +129,10 @@ module AzureDriver
                 vm.vm_id == deploy_id
             end
         end
+        def get_virtual_machines_ids resource_group = nil
+            params = resource_group.nil? ? ['list_all'] : ['list', resource_group ]
+            compute.mgmt.virtual_machines.send( *params ).map { |vm| vm.vm_id }
+        end
         def get_virtual_machine_size size_name, location
             compute.mgmt.virtual_machine_sizes.list( location ).value.detect do |size| 
                 size.name == size_name
@@ -154,6 +160,9 @@ module AzureDriver
         end
         def get_vm_rg_name vm
             vm.id.split('/')[4]
+        end
+        def get_vm_name deploy_id
+            get_virtual_machine(deploy_id).name
         end
 
         def generate_storage_profile image

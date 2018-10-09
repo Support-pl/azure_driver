@@ -86,9 +86,29 @@ vms.each do | id |
     end
 end
 
+### Searching Wilds ###
+one_vms = vms.map do |id| 
+    vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
+    vm.info! || vm.deploy_id
+end
+
+azure_vms = az_drv.get_virtual_machines_ids.delete_if do | id |
+    one_vms.include? id
+end
+
+azure_vms.each do | wild |
+    instance = AzureDriver::WildVM.new( wild, az_drv )
+    result <<
+        "VM = [\n\t" \
+        "ID=\"-1\",\n\t" \
+        "VM_NAME=\"#{instance.name}\",\n\t" \
+        "DEPLOY_ID=\"#{instance.id}\",\n\t" \
+        "IMPORT_TEMPLATE=\"#{instance.template64}\" ]\n"
+end
 
 
 result << "\n\nMONITORING_TIME=#{Time.now.to_i}"
+
 begin
     puts result
 rescue => e

@@ -39,6 +39,11 @@ vm_name = "one-#{id}-#{vm.name}"
 lcm_state = vm.lcm_state_str
 deploy_id = vm.deploy_id
 
+if vm.to_hash['VM']['USER_TEMPLATE']['IMPORTED'] == 'YES' then
+    puts vm.to_hash['VM']['USER_TEMPLATE']['DEPLOY_ID']
+    exit 0
+end
+
 cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']
 
 rg_name = cloud["RESOURCE_GROUP"]
