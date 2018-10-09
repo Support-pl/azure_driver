@@ -90,6 +90,7 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
             :username => cloud['VM_USER'], :passwd => cloud['VM_PASSWORD'], 
             :network_profile => network_profile, :storage_profile => storage_profile
         }).vm_id
+        vm.resched
     rescue => e
         STDERR.puts "Error deploying Azure VM: #{e.message}\nBackTrace:\n#{e.backtrace}"
         exit -1
@@ -101,7 +102,8 @@ elsif deploy_id then
     if deploy_id == '-' then
         deploy_id = az_drv.get_vm_deploy_id_by_one_id id
     end
-    az_drv.start_vm(deploy_id)
+    puts az_drv.start_vm(deploy_id)
+    vm.resched
 else
     puts 'Not now, sorry'
 end

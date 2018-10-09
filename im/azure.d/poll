@@ -45,7 +45,16 @@ require 'azure_driver'
 subscription = host.to_hash['HOST']['TEMPLATE']['SUBSCRIPTION']	|| 'default'
 az_drv = AzureDriver::Client.new(subscription)
 
-result = ""
+### Getting and Emulating Subscription Info ###
+
+result = "HYPERVISOR=hyper-v\n" \
+	 "USEDCPU=100\n" \
+	 "TOTALCPU=1000\n" \
+	 "TOTALMEMORY=7864320\n" \
+	 "USEDMEMORY=786432\n\n" \
+	 "VM_POLL=YES\n"
+
+### Getting registered VMs info ###
 
 vms.each do | id |
     begin
@@ -57,26 +66,29 @@ vms.each do | id |
             deploy_id = az_drv.get_vm_deploy_id_by_one_id id
         end
 
+        name = az_drv.get_vm_name deploy_id
+
         poll, poll_data = az_drv.poll deploy_id
 
         result <<
-            "VM = [\n" \
-            "ID=\"#{id}\",\n" \
-            "DEPLOY_ID=\"#{deploy_id}\",\n" \
-            "POLL=\"#{poll}\",\n" \
-            "CPU=\"#{poll_data[:cpu]}\",\n" \
-            "MEMORY=\"#{poll_data[:memory]}\"\n" \
+            "VM=[\n\t" \
+            "ID=#{id},\n\t" \
+	        "VM_NAME=one-#{name},\n" \
+            "DEPLOY_ID=#{deploy_id},\n\t" \
+            "POLL=\"#{poll}\"\t" \
             "]\n"
-        
     rescue
         result <<
-            "VM = [\n" \
-            "ID=\"#{id}\",\n" \
-            "POLL=\"STATE=-\"\n" \
+            "VM = [\n\t" \
+            "ID=\"#{id}\",\n\t" \
+            "POLL=\"STATE=-\"\n\t" \
             "]\n"
     end
 end
 
+
+
+result << "\n\nMONITORING_TIME=#{Time.now.to_i}"
 begin
     puts result
 rescue => e

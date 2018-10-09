@@ -300,32 +300,33 @@ module AzureDriver
                 disk_wiops = disk_wiops.nil? ? 0.0 : disk_wiops.average * 60
                 
         
-                info =  "#{POLL_ATTRIBUTE[:memory]}=#{memory * 1024} " \
-                        "#{POLL_ATTRIBUTE[:cpu]}=#{cpu * 10} " \
-                        "#{POLL_ATTRIBUTE[:nettx]}=#{nettx} " \
-                        "#{POLL_ATTRIBUTE[:netrx]}=#{netrx} " \
+                info =  "#{AzureDriver::POLL_ATTRIBUTE[:cpu]}=#{cpu * 10} " \
+                        "#{AzureDriver::POLL_ATTRIBUTE[:memory]}=#{memory * 1024} " \
+                        "#{AzureDriver::POLL_ATTRIBUTE[:netrx]}=#{netrx} " \
+                        "#{AzureDriver::POLL_ATTRIBUTE[:nettx]}=#{nettx} " \
                         "DISKRDBYTES=#{disk_rbytes} " \
                         "DISKWRBYTES=#{disk_wbytes} " \
                         "DISKRDIOPS=#{disk_riops} " \
                         "DISKWRIOPS=#{disk_wiops} " \
-                        "RESOURCE_GROUP_NAME=#{rg_name} "
+                        "RESOURCE_GROUP_NAME=#{rg_name.downcase} " \
+                        "MONITORING_TIME=#{Time.now.to_i}"
                 
                 state = ""
                 if !instance
-                    state = VM_STATE[:deleted]
+                    state = VM_STATE[:error]
                 else
                     state = case instance.instance_view.statuses.last.code.split('/').last
                     when "running", "starting"
-                        VM_STATE[:active]
-                    when "suspended", "deallocated"
-                        VM_STATE[:paused]
+                        AzureDriver::VM_STATE[:active]
+                    when "stopped", "deallocated"
+                        state = VM_STATE[:deleted]
                     else
-                        VM_STATE[:unknown]
+                        AzureDriver::VM_STATE[:unknown]
                     end
                 end
         
         
-                info << "#{POLL_ATTRIBUTE[:state]}=#{state}"
+                info = "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{state} " + info
         
                 return info, { 
                     :cpu => cpu, :memory => memory, 
@@ -341,4 +342,3 @@ module AzureDriver
         end
     end
 end
-#AzureDriver.get_virtual_network 'spbywesteurope', 'test666-vnet'
