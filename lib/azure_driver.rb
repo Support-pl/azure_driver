@@ -124,6 +124,19 @@ module AzureDriver
 
             compute.mgmt.virtual_machines.create_or_update(opts[:rg_name], opts[:name], props)
         end
+        def rm_virtual_machine rg_name, name, rm_disk = false
+            if rm_disk then
+                vm = compute.mgmt.virtual_machines.list(rg_name).detect { |vm| vm.name == name }
+                rm_virtual_machine_disk(
+                    rg_name,
+                    vm.storage_profile.os_disk.name
+                )
+            end
+            compute.mgmt.virtual_machines.delete rg_name, name
+        end
+
+        ### Getters for VMs ###
+
         def get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.list_all.detect do |vm|
                 vm.vm_id == deploy_id
@@ -138,6 +151,20 @@ module AzureDriver
                 size.name == size_name
             end
         end
+        def get_vm_rg_name vm
+            vm.id.split('/')[4]
+        end
+        def get_vm_name deploy_id
+            get_virtual_machine(deploy_id).name
+        end
+        def get_vm_deploy_id_by_one_id one_id
+            compute.mgmt.virtual_machines.list_all.detect do |vm|
+                vm.name.include? "one-#{one_id}-"
+            end.vm_id
+        end
+
+        ### Control Methods ###
+
         def start_vm deploy_id
             vm = get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.start(get_vm_rg_name(vm), vm.name)
@@ -153,17 +180,9 @@ module AzureDriver
             compute.mgmt.virtual_machines.restart(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
-        def get_vm_deploy_id_by_one_id one_id
-            compute.mgmt.virtual_machines.list_all.detect do |vm|
-                vm.name.include? "one-#{one_id}-"
-            end.vm_id
-        end
-        def get_vm_rg_name vm
-            vm.id.split('/')[4]
-        end
-        def get_vm_name deploy_id
-            get_virtual_machine(deploy_id).name
-        end
+
+        ######################
+
 
         def generate_storage_profile image, disk_size = 30
             storage_profile = compute.mgmt.model_classes.storage_profile.new
@@ -183,6 +202,10 @@ module AzureDriver
             storage_profile
         end
 
+        def rm_virtual_machine_disk rg_name, name
+            compute.mgmt.disks.delete rg_name, name
+        end
+
         ### Resource groups  ###
         def mk_resource_group name, location
 
@@ -191,20 +214,8 @@ module AzureDriver
 
             resources.mgmt.resource_groups.create_or_update(name, resource_group)
         end
-
-        ### Storage Accounts ###
-        def mk_storage_account name, rg_name, location, sku_name, sku_kind = "Storage"
-        
-            params = storage.mgmt.model_classes.storage_account_create_parameters.new
-            params.location = location
-            sku = storage.mgmt.model_classes.sku.new
-            sku.name = sku_name
-            params.sku = sku
-            params.kind = sku_kind || "Storage"
-        
-            storage.mgmt.storage_accounts.create(
-                rg_name, name, params
-            )
+        def rm_resource_group name
+            resources.mgmt.resource_groups.delete name
         end
 
         ### Virtual Networks ###
@@ -239,12 +250,10 @@ module AzureDriver
             vnet = network.mgmt.virtual_networks.create_or_update(opts[:rg_name], opts[:name], params)
             vnet.subnets.first
         end
-        def get_virtual_network name, rg_name
-
-            network.mgmt.virtual_networks.get rg_name, name
-
+        def rm_virtual_network rg_name, name
+            network.mgmt.virtual_networks.delete rg_name, name
         end
-        def mk_network_interface name, rg_name, subnet, location
+        def mk_network_interface rg_name, name, subnet, location
 
             nic = network.mgmt.model_classes.network_interface.new
 
@@ -258,6 +267,15 @@ module AzureDriver
             network.mgmt.network_interfaces.create_or_update(
                 rg_name, name, nic
             )
+        end
+        def rm_network_interface rg_name, name
+            network.mgmt.network_interfaces.delete rg_name, name
+        end
+
+        def get_virtual_network name, rg_name
+
+            network.mgmt.virtual_networks.get rg_name, name
+
         end
 
         def generate_network_profile iface

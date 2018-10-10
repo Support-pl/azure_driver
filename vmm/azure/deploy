@@ -79,7 +79,7 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
     })
 
     # Create iface
-    iface = az_drv.mk_network_interface (rg_name + vm.id.to_s + '-iface'), rg_name, subnet, location
+    iface = az_drv.mk_network_interface rg_name, (rg_name + vm.id.to_s + '-iface'), subnet, location
     # Create net profile
     network_profile = az_drv.generate_network_profile iface
     # Create storage profile
