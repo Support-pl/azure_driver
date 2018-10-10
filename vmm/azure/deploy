@@ -47,6 +47,7 @@ end
 template = vm.to_hash['VM']['TEMPLATE']
 
 cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']
+cloud = cloud.detect { | template | template['TYPE'] == 'AZURE' } if cloud.class == Array
 
 rg_name = cloud["RESOURCE_GROUP"]
 subnet = cloud["SUBNET"]
