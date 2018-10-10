@@ -97,7 +97,7 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
     begin
         puts az_drv.mk_virtual_machine({
             :name => vm_name, :rg_name => rg_name, :location => location,
-            :plan => cloud['INSTANCE_TYPE'], :hostname => cloud['VM_COMPUTER_NAME'],
+            :plan => cloud['INSTANCE_TYPE'], :hostname => "#{image.first.downcase}",
             :username => cloud['VM_USER'], :passwd => cloud['VM_PASSWORD'], 
             :network_profile => network_profile, :storage_profile => storage_profile
         }).vm_id
