@@ -44,6 +44,8 @@ if vm.to_hash['VM']['USER_TEMPLATE']['IMPORTED'] == 'YES' then
     exit 0
 end
 
+template = vm.to_hash['VM']['TEMPLATE']
+
 cloud = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']
 
 rg_name = cloud["RESOURCE_GROUP"]
@@ -56,13 +58,12 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
 
     az_drv = AzureDriver::Client.new(host)
 
-    size = az_drv.get_virtual_machine_size cloud['INSTANCE_TYPE'], location
-
     conf =
     "CONTEXT=[\n" \
-    "  DISK_SIZE=\"#{size.os_disk_size_in_mb}\",\n" \
-    "  VCPU=\"#{size.number_of_cores + 1}\",\n" \
-    "  MEMORY=\"#{size.memory_in_mb}\"]\n"
+    "  DISK_SIZE=\"#{template['OS_DISK_SIZE']}\",\n" \
+    "  VCPU=\"#{template['VCPU']}\",\n" \
+    "  CPU=\"#{template['CPU']}\",\n" \
+    "  MEMORY=\"#{template['MEMORY']}\"]\n"
 
     vm.updateconf(conf)
 
@@ -81,11 +82,15 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
     # Create net profile
     network_profile = az_drv.generate_network_profile iface
     # Create storage profile
-    storage_profile = az_drv.generate_storage_profile({
-            :publisher => 'Canonical',
-            :name => 'UbuntuServer',
-            :version => '16.04-LTS'
-    }) 
+    image = cloud['IMAGE'].split('_')
+    storage_profile = az_drv.generate_storage_profile(
+        {
+            :publisher => image[0],
+            :name => image[1],
+            :version => image[2]
+        },
+        vm['/VM/USER_TEMPLATE/OS_DISK_SIZE'].to_i
+    ) 
 
     # Create VM
     begin

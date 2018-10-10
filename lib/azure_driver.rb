@@ -165,7 +165,7 @@ module AzureDriver
             get_virtual_machine(deploy_id).name
         end
 
-        def generate_storage_profile image
+        def generate_storage_profile image, disk_size = 30
             storage_profile = compute.mgmt.model_classes.storage_profile.new
 
             img_ref = compute.mgmt.model_classes.image_reference.new
@@ -174,6 +174,11 @@ module AzureDriver
             img_ref.sku = image[:version]
             img_ref.version = 'latest'
             storage_profile.image_reference = img_ref
+
+            os_disk = compute.mgmt.model_classes.osdisk.new
+            os_disk.disk_size_gb = disk_size
+            os_disk.create_option = "FromImage"
+            storage_profile.os_disk = os_disk
 
             storage_profile
         end
