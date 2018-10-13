@@ -16,53 +16,30 @@
 # limitations under the License.                                             #
 # -------------------------------------------------------------------------- #
 
-calog = "File: #{__FILE__}\nARGV = #{ARGV.inspect}\n"
-File.open('/var/lib/one/remotes/vmm/azure/call.log', 'a'){ |f| f.write calog }
+STARTUP_TIME = Time.now.to_f
 
-ONE_LOCATION=ENV["ONE_LOCATION"] if !defined?(ONE_LOCATION)
+ONE_LOCATION = ENV["ONE_LOCATION"] if !defined?(ONE_LOCATION)
 
 if !ONE_LOCATION
-    RUBY_LIB_LOCATION="/usr/lib/one/ruby" if !defined?(RUBY_LIB_LOCATION)
+    RUBY_LIB_LOCATION = "/usr/lib/one/ruby" if !defined?(RUBY_LIB_LOCATION)
+    ETC_LOCATION      = "/etc/one/" if !defined?(ETC_LOCATION)
 else
-    RUBY_LIB_LOCATION=ONE_LOCATION+"/lib/ruby" if !defined?(RUBY_LIB_LOCATION)
+    RUBY_LIB_LOCATION = ONE_LOCATION + "/lib/ruby" if !defined?(RUBY_LIB_LOCATION)
+    ETC_LOCATION      = ONE_LOCATION + "/etc/" if !defined?(ETC_LOCATION)
 end
 
 $: << RUBY_LIB_LOCATION
-$: << File.dirname(__FILE__)
+require 'opennebula'
+include OpenNebula
 
-require 'azure_driver'
-
-deploy_id = ARGV[0]
-host      = ARGV[1]
-vm_id     = ARGV[-2]
-
-az_drv = AzureDriver::Client.new(host)
-
-if deploy_id == '-' then
-    deploy_id = az_drv.get_vm_deploy_id_by_one_id vm_id
-end
-
-vm = OpenNebula::VirtualMachine.new_with_id vm_id, OpenNebula::Client.new
-vm.info!
-lcm_state = vm.lcm_state_str
+id = ARGV.first
 
 begin
-    case lcm_state
-    when "SHUTDOWN"
-        puts az_drv.terminate_vm(deploy_id, vm)
-    when "SHUTDOWN_POWEROFF", "SHUTDOWN_UNDEPLOY"
-        az_drv.stop_vm(deploy_id)
-    else
-        raise "Wrong State: #{lcm_state}"
-    end
+    vm = VirtualMachine.new_with_id id, Client.new
+    vm.info!
+    vm.recover(1)
+    exit 0
 rescue => e
-    if e.class == MsRestAzure::AzureOperationError then
-        response = JSON.parse(e.response.body)['error']
-        msg = response['code'] + "\n" + response['message']
-    else
-        msg = e.message
-    end
-    STDERR.puts "Error shutting down Azure VM: " + msg
+    STDERR.puts "FAIL\n#{e.message}\n#{e.backtrace}"
     exit -1
 end
-

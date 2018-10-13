@@ -127,12 +127,15 @@ module AzureDriver
         def rm_virtual_machine rg_name, name, rm_disk = false
             if rm_disk then
                 vm = compute.mgmt.virtual_machines.list(rg_name).detect { |vm| vm.name == name }
-                rm_virtual_machine_disk(
-                    rg_name,
-                    vm.storage_profile.os_disk.name
-                )
+                disk_name = vm.storage_profile.os_disk.name
+
+                compute.mgmt.virtual_machines.delete rg_name, name
+                
+                rm_virtual_machine_disk( rg_name, disk_name )
+            else
+                compute.mgmt.virtual_machines.delete rg_name, name
+
             end
-            compute.mgmt.virtual_machines.delete rg_name, name
         end
 
         ### Getters for VMs ###
@@ -179,6 +182,28 @@ module AzureDriver
             vm = get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.restart(get_vm_rg_name(vm), vm.name)
             vm.vm_id
+        end
+        def terminate_vm deploy_id, one_vm
+
+            warn = ["Warnings: "]
+
+            az_vm = get_virtual_machine deploy_id
+            rg_name = get_vm_rg_name az_vm
+
+            iface_name = az_vm.network_profile.network_interfaces.first.id.split('/').last
+
+            rm_virtual_machine rg_name, az_vm.name, true
+            begin
+                rm_network_interface rg_name, iface_name
+            rescue => e
+                warn << "VirtualNetworkInterface #{iface_name} may be not removed"
+            end
+            begin
+                rm_virtual_network rg_name, rg_name + '-vnet'
+            rescue => e
+                warn << "VirtualNetwork #{rg_name + '-vnet'} may be not removed"
+            end
+            return warn.size != 1 ? warn.join("\n") : '-'
         end
 
         ######################
