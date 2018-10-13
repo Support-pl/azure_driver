@@ -14,7 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
 # See the License for the specific language governing permissions and        #
 # limitations under the License.                                             #
-#--------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 
 ONE_LOCATION=ENV["ONE_LOCATION"] if !defined?(ONE_LOCATION)
 
@@ -79,7 +79,7 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
     })
 
     # Create iface
-    iface = az_drv.mk_network_interface rg_name, (rg_name + vm.id.to_s + '-iface'), subnet, location
+    iface = az_drv.mk_network_interface rg_name, (vm_name + '-iface'), subnet, location
     # Create net profile
     network_profile = az_drv.generate_network_profile iface
     # Create storage profile
@@ -97,7 +97,7 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
     begin
         puts az_drv.mk_virtual_machine({
             :name => vm_name, :rg_name => rg_name, :location => location,
-            :plan => cloud['INSTANCE_TYPE'], :hostname => "#{image.first.downcase}",
+            :plan => cloud['INSTANCE_TYPE'], :hostname => "#{image[1].downcase}",
             :username => cloud['VM_USER'], :passwd => cloud['VM_PASSWORD'], 
             :network_profile => network_profile, :storage_profile => storage_profile
         }).vm_id
