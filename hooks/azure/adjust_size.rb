@@ -46,8 +46,8 @@ require 'azure_mgmt_compute'
 require 'yaml'
 
 begin
-    size_name = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']['INSTANCE_TYPE']
-    location = vm.to_hash['VM']['USER_TEMPLATE']['PUBLIC_CLOUD']['LOCATION'].downcase.delete(' ')
+    size_name = vm['/VM/USER_TEMPLATE/PUBLIC_CLOUD/INSTANCE_TYPE']
+    location = vm['/VM/USER_TEMPLATE/PUBLIC_CLOUD/LOCATION'].downcase.delete(' ')
     cloud_type = vm['/VM/USER_TEMPLATE/PUBLIC_CLOUD/TYPE']
 rescue
     cloud_type = 'nil'
@@ -91,7 +91,7 @@ size = client.virtual_machine_sizes.list( location ).value.detect do |size|
 end
 
 capacity_template =
-    "CPU=#{size.number_of_cores}\n"\
+    "VCPU=#{size.number_of_cores}\n"\
     "MEMORY=#{size.memory_in_mb}"
 
 vm.resize(capacity_template, false)
