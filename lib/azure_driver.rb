@@ -44,6 +44,40 @@ module AzureDriver
     POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
     VM_STATE        = VirtualMachineDriver::VM_STATE
 
+    SECURITY_RULES = {
+        "SSH" => {
+            "name" => 'SSH',
+            "destination_port_range" => '22',
+            "priority" => '300'
+        },
+        "HTTP" => {
+            "name" => 'HTTP',
+            "destination_port_range" => '80',
+            "priority" => '340'
+        },
+        "HTTPS" => {
+            "name" => 'HTTPS',
+            "destination_port_range" => '443',
+            "priority" => '320'
+        },
+        "RDP" => {
+            "name" => 'RDP',
+            "destination_port_range" => '3389',
+            "priority" => '360'
+        },
+        "DEFAULT" => {
+            "protocol" => 'TCP',
+            "direction" => 'Inbound',
+            "source_port_range" => '*',
+            "source_address_prefix" => '*',
+            "source_address_prefixes" => [],
+            "destination_address_prefix" => '*',
+            "destination_address_prefixes" => [],
+            "source_port_ranges" => [],
+            "destination_port_ranges" => []
+        }
+    }
+
     class Client < Azure::Profiles::Latest::Client
         def initialize(host)
             @account = YAML::load(File.read(AZ_DRIVER_CONF))
@@ -288,6 +322,8 @@ module AzureDriver
             ip_conf.public_ipaddress = mk_public_ip(rg_name, name.gsub('-iface', '-ip'), location) if pub_ip
             nic.ip_configurations = [ip_conf]
 
+            nic.network_security_group = mk_nsg rg_name, name.gsub('-iface', '-nsg'), location, allow: ports
+
             nic.location = location
 
             network.mgmt.network_interfaces.create_or_update(
@@ -306,6 +342,34 @@ module AzureDriver
                 rg_name, name, pic
             )
         end
+        def mk_nsg rg_name, name, location, allow: [], deny: []
+            nsg = network.mgmt.model_classes.network_security_group.new
+            nsg.location = location
+            nsg.security_rules = []
+            allow.each do | connetion |
+                nsg.security_rules << mk_network_security_rule( AzureDriver::SECURITY_RULES[connetion], 'Allow')
+            end
+            deny.each do | connetion |
+                nsg.security_rules << mk_network_security_rule( AzureDriver::SECURITY_RULES[connetion], 'Deny')
+            end
+
+            network.mgmt.network_security_groups.create_or_update(
+                rg_name, name, nsg
+            )
+        end
+        def mk_network_security_rule template = {}, access = 'Deny' # | Allow
+            nsr = network.mgmt.model_classes.security_rule.new
+            AzureDriver::SECURITY_RULES['DEFAULT'].each do | property, value |
+                nsr.send("#{property}=", value)
+            end
+            template.each do | property, value |
+                nsr.send("#{property}=", value)
+            end
+            nsr.access = access
+
+            nsr
+        end
+
         def get_virtual_network name, rg_name
 
             network.mgmt.virtual_networks.get rg_name, name
