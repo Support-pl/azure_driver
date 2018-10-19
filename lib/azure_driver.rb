@@ -278,13 +278,14 @@ module AzureDriver
         def rm_virtual_network rg_name, name
             network.mgmt.virtual_networks.delete rg_name, name
         end
-        def mk_network_interface rg_name, name, subnet, location
+        def mk_network_interface rg_name, name, subnet, location, pub_ip = false, ports = []
 
             nic = network.mgmt.model_classes.network_interface.new
 
             ip_conf = network.mgmt.model_classes.network_interface_ipconfiguration.new
             ip_conf.name = rg_name
             ip_conf.subnet = subnet
+            ip_conf.public_ipaddress = mk_public_ip(rg_name, name.gsub('-iface', '-ip'), location) if pub_ip
             nic.ip_configurations = [ip_conf]
 
             nic.location = location
@@ -297,6 +298,14 @@ module AzureDriver
             network.mgmt.network_interfaces.delete rg_name, name
         end
 
+        def mk_public_ip rg_name, name, location
+            pic = network.mgmt.model_classes.public_ipaddress.new
+            pic.location = location
+
+            network.mgmt.public_ipaddresses.create_or_update(
+                rg_name, name, pic
+            )
+        end
         def get_virtual_network name, rg_name
 
             network.mgmt.virtual_networks.get rg_name, name
