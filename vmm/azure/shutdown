@@ -16,9 +16,6 @@
 # limitations under the License.                                             #
 # -------------------------------------------------------------------------- #
 
-calog = "File: #{__FILE__}\nARGV = #{ARGV.inspect}\n"
-File.open('/var/lib/one/remotes/vmm/azure/call.log', 'a'){ |f| f.write calog }
-
 ONE_LOCATION=ENV["ONE_LOCATION"] if !defined?(ONE_LOCATION)
 
 if !ONE_LOCATION
@@ -28,7 +25,6 @@ else
 end
 
 $: << RUBY_LIB_LOCATION
-$: << File.dirname(__FILE__)
 
 require 'azure_driver'
 

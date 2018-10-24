@@ -224,13 +224,16 @@ module AzureDriver
             az_vm = get_virtual_machine deploy_id
             rg_name = get_vm_rg_name az_vm
 
-            iface_name = az_vm.network_profile.network_interfaces.first.id.split('/').last
+            ifaces = az_vm.network_profile.network_interfaces.map { | iface_ref | iface_ref.id.split('/').last }
 
             rm_virtual_machine rg_name, az_vm.name, true
-            begin
-                rm_network_interface rg_name, iface_name
-            rescue => e
-                warn << "VirtualNetworkInterface #{iface_name} may be not removed"
+
+            ifaces.each do | iface_name |
+                begin
+                    rm_network_interface rg_name, iface_name
+                rescue => e
+                    warn << "VirtualNetworkInterface #{iface_name} may be not removed"
+                end
             end
             begin
                 rm_virtual_network rg_name, rg_name + '-vnet'
@@ -330,34 +333,73 @@ module AzureDriver
                 rg_name, name, nic
             )
         end
+        def get_network_interface rg_name, name
+            network.mgmt.network_interfaces.get rg_name, name
+        end
         def rm_network_interface rg_name, name
+            iface = network.mgmt.network_interfaces.get rg_name, name
+            
+            ip_addresses = iface.ip_configurations.collect{ |ip_conf| ip_conf.public_ipaddress }
+            nsg = iface.network_security_group
+            
             network.mgmt.network_interfaces.delete rg_name, name
+            
+            ip_addresses.each do |ip_address|
+                rm_public_ip *( ip_address.id.split('/').values_at(4, 8) )
+            end
+            begin
+                rm_nsg *( nsg.id.split('/').values_at(4, 8) )
+            rescue
+            end
+        end
+
+        def get_virtual_machine_ip deploy_id
+            get_virtual_machine(deploy_id).network_profile.network_interfaces.inject([]) do | ips, iface |
+                ips <<  get_network_interface(
+                            *(  iface.id.split('/').values_at(4, 8)  )
+                        ).ip_configurations.collect do | ip_conf |
+                            [
+                                begin ip_conf.private_ipaddress rescue nil end,
+                                begin get_public_ip( *( ip_conf.public_ipaddress.id.split('/').values_at(4, 8) ) ).ip_address rescue nil end
+                            ]
+                        end
+            end.flatten.compact.sort_by {| ip | 10 ^ ip.to_i } .reverse
         end
 
         def mk_public_ip rg_name, name, location
             pic = network.mgmt.model_classes.public_ipaddress.new
             pic.location = location
-
+            pic.public_ipaddress_version = "IPv4"
+            pic.public_ipallocation_method = "Static"
             network.mgmt.public_ipaddresses.create_or_update(
                 rg_name, name, pic
             )
+        end
+        def get_public_ip rg_name, name
+            network.mgmt.public_ipaddresses.get rg_name, name
+        end
+        def rm_public_ip rg_name, name
+            network.mgmt.public_ipaddresses.delete rg_name, name
         end
         def mk_nsg rg_name, name, location, allow: [], deny: []
             nsg = network.mgmt.model_classes.network_security_group.new
             nsg.location = location
             nsg.security_rules = []
             allow.each do | connetion |
-                nsg.security_rules << mk_network_security_rule( AzureDriver::SECURITY_RULES[connetion], 'Allow')
+                nsg.security_rules << gen_network_security_rule( AzureDriver::SECURITY_RULES[connetion], 'Allow')
             end
             deny.each do | connetion |
-                nsg.security_rules << mk_network_security_rule( AzureDriver::SECURITY_RULES[connetion], 'Deny')
+                nsg.security_rules << gen_network_security_rule( AzureDriver::SECURITY_RULES[connetion], 'Deny')
             end
 
             network.mgmt.network_security_groups.create_or_update(
                 rg_name, name, nsg
             )
         end
-        def mk_network_security_rule template = {}, access = 'Deny' # | Allow
+        def rm_nsg rg_name, name
+            network.mgmt.network_security_groups.delete rg_name, name
+        end
+        def gen_network_security_rule template = {}, access = 'Deny' # | Allow
             nsr = network.mgmt.model_classes.security_rule.new
             AzureDriver::SECURITY_RULES['DEFAULT'].each do | property, value |
                 nsr.send("#{property}=", value)
@@ -371,9 +413,7 @@ module AzureDriver
         end
 
         def get_virtual_network name, rg_name
-
             network.mgmt.virtual_networks.get rg_name, name
-
         end
 
         def generate_network_profile iface
@@ -439,6 +479,7 @@ module AzureDriver
                         "DISKRDIOPS=#{disk_riops} " \
                         "DISKWRIOPS=#{disk_wiops} " \
                         "RESOURCE_GROUP_NAME=#{rg_name.downcase} " \
+                        "GUEST_IP_ADDRESSES=\\\"#{get_virtual_machine_ip(deploy_id).join(',')}\\\""
                         "MONITORING_TIME=#{Time.now.to_i}"
                 
                 state = ""
@@ -449,7 +490,7 @@ module AzureDriver
                     when "running", "starting"
                         AzureDriver::VM_STATE[:active]
                     when "stopped", "deallocated"
-                        state = VM_STATE[:deleted]
+                        state = AzureDriver::VM_STATE[:deleted]
                     else
                         AzureDriver::VM_STATE[:unknown]
                     end
@@ -467,7 +508,7 @@ module AzureDriver
             rescue => e
             # Unknown state if exception occurs retrieving information from
             # an instance
-                "#{POLL_ATTRIBUTE[:state]}=#{VM_STATE[:unknown]} "
+                "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{AzureDriver::VM_STATE[:unknown]} POLL_ERROR=#{e.message}"
             end
         end
     end
