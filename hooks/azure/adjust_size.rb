@@ -38,7 +38,6 @@ include OpenNebula
 id = ARGV.first
 
 vm = VirtualMachine.new_with_id id, Client.new
-vm.hold
 vm.info!
 
 require 'azure_mgmt_compute'
@@ -56,6 +55,8 @@ if cloud_type != 'AZURE' then
     puts "Not Azure(ARM) VM, skipping."
     exit 0
 end
+
+vm.hold
 
 ### Set Azure ###
 @account = YAML::load(File.read(AZ_DRIVER_CONF))
