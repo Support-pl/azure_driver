@@ -33,7 +33,7 @@ AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/azure_driver.default"
 
 require 'yaml'
 require 'ms_rest_azure'
-require 'azure_driver/azure_sdk'
+require 'azure_driver/azure_sdk' # Azure SDK Minimal (auth, billing, compute, monitor, network, resources, storage, subscriptions)
 require 'opennebula'
 require 'VirtualMachineDriver'
 
@@ -44,6 +44,7 @@ module AzureDriver
     POLL_ATTRIBUTE  = VirtualMachineDriver::POLL_ATTRIBUTE
     VM_STATE        = VirtualMachineDriver::VM_STATE
 
+    # Security Rules Templates
     SECURITY_RULES = {
         "SSH" => {
             "name" => 'SSH',
@@ -79,10 +80,11 @@ module AzureDriver
     }
 
     class Client < Azure::Profiles::Latest::Client
-        def initialize(host)
+        # @param [String] subscription - Subscription from azure_driver.conf
+        def initialize(subscription = 'default')
             @account = YAML::load(File.read(AZ_DRIVER_CONF))
-            _regions = @account['regions']
-            _az = _regions[host] || _regions['default']
+            _subscriptions = @account['subscriptions']
+            _az = _subscriptions[subscription] || _subscriptions['default']
             subscription_id = _az['subscription_id']
             tenant_id = _az['tenant_id']
             client_id = _az['client_id']
@@ -105,22 +107,27 @@ module AzureDriver
 
             super(@options)
         end
-        def auth host = nil
+        def auth subscription = nil
             @options
         end
 
         ### Virtual Machines ###
 
+        # Creates VirtualMachine
         # @param [Hash] opts
-        # @option opts [String] :name - 
-        # @option opts [String] :rg_name - 
-        # @option opts [String] :username - 
-        # @option opts [String] :passwd - 
-        # @option opts [String] :hostname - 
-        # @option opts [String] :plan - 
-        # @option opts [String] :location - 
-        # @option opts [NetworkProfile] :network_profile - 
-        # @option opts [String] :name - 
+        # @option opts [String] :name - New VirtualMachine name
+        # @option opts [String] :rg_name - Resource Group Name where to deploy VM
+        # @option opts [String] :username - VM OS user name(remember to not use reserved names such as root, admin and etc...)
+        # @option opts [String] :passwd - Password for OS user
+        # @option opts [String] :hostname
+        # @option opts [String] :plan - SKU name 
+        # @option opts [String] :location
+        # @option opts [NetworkProfile] :network_profile
+        # @see generate_network_profile For :network_profile option
+        # @option opts [StorageProfile] :storage_profile 
+        # @see generate_storage_profile For :storage_profile option
+        # @return [VirtualMachine]
+        # @todo Add SSH-keys support
         def mk_virtual_machine opts = {}
             # Include SDK modules to ease access to compute classes.
             # include Azure::Compute::Profiles::Latest::Mgmt
@@ -158,6 +165,10 @@ module AzureDriver
 
             compute.mgmt.virtual_machines.create_or_update(opts[:rg_name], opts[:name], props)
         end
+        # Deletes Virtual Machine with OS disk
+        # @param [String] rg_name - Resource group
+        # @param [String] name - VirtualMachine name
+        # @param [Boolean] rm_disk - Deletes OSDisk if true
         def rm_virtual_machine rg_name, name, rm_disk = false
             if rm_disk then
                 vm = compute.mgmt.virtual_machines.list(rg_name).detect { |vm| vm.name == name }
@@ -174,26 +185,46 @@ module AzureDriver
 
         ### Getters for VMs ###
 
+        # Returns VM by deploy id
+        # @param [Fixnum] deploy_id
+        # @return [String]
         def get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.list_all.detect do |vm|
                 vm.vm_id == deploy_id
             end
         end
+        # Lists VirtualMachines deploy ids
+        # @param [String] resource_group - If given lists VMs at this resource group, if not - lists all VMs at subscription
+        # @return [Array<String>]
         def get_virtual_machines_ids resource_group = nil
             params = resource_group.nil? ? ['list_all'] : ['list', resource_group ]
             compute.mgmt.virtual_machines.send( *params ).map { |vm| vm.vm_id }
         end
+        # Returns SKU parametrs
+        # @param [String] size_name - SKU name(e.g. Standard_A0)
+        # @param [String] location
+        # @return [VirtualMachineSize]
         def get_virtual_machine_size size_name, location
             compute.mgmt.virtual_machine_sizes.list( location ).value.detect do |size| 
                 size.name == size_name
             end
         end
+        # Returns VMs resource_group name
+        # @param [VirtualMachine] vm - VM object
+        # @return [String] resource group name
         def get_vm_rg_name vm
             vm.id.split('/')[4]
         end
+        # Returns VMs name by deploy id
+        # @param [Fixnum] deploy_id
+        # @return [String]
         def get_vm_name deploy_id
             get_virtual_machine(deploy_id).name
         end
+        # Returns VMs deploy id by OpenNebula id
+        # @param [Fixnum] one_id
+        # @return [String]
+        # @note Don's use with imported VMs
         def get_vm_deploy_id_by_one_id one_id
             compute.mgmt.virtual_machines.list_all.detect do |vm|
                 vm.name.include? "one-#{one_id}-"
@@ -202,21 +233,34 @@ module AzureDriver
 
         ### Control Methods ###
 
+        # Starts VM
+        # @param [String] deploy_id
+        # @return [String] vm deploy id
         def start_vm deploy_id
             vm = get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.start(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
+        # Stops VM
+        # @param [String] deploy_id
+        # @return [String] vm deploy id
         def stop_vm deploy_id
             vm = get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.power_off(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
+        # Restarts VM
+        # @param [String] deploy_id
+        # @return [String] vm deploy id
         def restart_vm deploy_id
             vm = get_virtual_machine deploy_id
             compute.mgmt.virtual_machines.restart(get_vm_rg_name(vm), vm.name)
             vm.vm_id
         end
+        # Terminates VM
+        # @param [String]
+        # @param [OpenNebula::VirtualMachine]
+        # @return [Array<String>] Array of warnings
         def terminate_vm deploy_id, one_vm
 
             warn = ["Warnings: "]
@@ -232,7 +276,7 @@ module AzureDriver
                 begin
                     rm_network_interface rg_name, iface_name
                 rescue => e
-                    warn << "VirtualNetworkInterface #{iface_name} may be not removed"
+                    warn << "NetworkInterface #{iface_name} may be not removed"
                 end
             end
             begin
@@ -245,7 +289,12 @@ module AzureDriver
 
         ######################
 
-
+        # Generates storage profile with OSDisk from given image
+        # @param [Hash] image - Image:
+        # @option image [String] :publisher - Publisher
+        # @option image [String] :name - Name
+        # @option image [String] :version - SKU
+        # @return [StorageProfile]
         def generate_storage_profile image, disk_size = 30
             storage_profile = compute.mgmt.model_classes.storage_profile.new
 
@@ -264,11 +313,19 @@ module AzureDriver
             storage_profile
         end
 
+        # Deletes disk
+        # @param [String] rg_name - resource group name
+        # @param [String] name - disk name
         def rm_virtual_machine_disk rg_name, name
             compute.mgmt.disks.delete rg_name, name
         end
 
         ### Resource groups  ###
+
+        # Creates resource group at given location
+        # @param [String] name - name for new RG
+        # @param [String] location
+        # @return [ResourceGroup]
         def mk_resource_group name, location
 
             resource_group = resources.mgmt.model_classes.resource_group.new
@@ -276,6 +333,8 @@ module AzureDriver
 
             resources.mgmt.resource_groups.create_or_update(name, resource_group)
         end
+        # Deletes resource group
+        # @param [String] name
         def rm_resource_group name
             resources.mgmt.resource_groups.delete name
         end
@@ -289,6 +348,7 @@ module AzureDriver
         # @option opts [String] :location - 
         # @option opts [Array] :prefixes - (Optional)
         # @option opts [Array] :dns - (Optional)
+        # @return [VirtualNetwork]
         def mk_virtual_network opts = {}
 
             params = network.mgmt.model_classes.virtual_network.new
@@ -312,9 +372,20 @@ module AzureDriver
             vnet = network.mgmt.virtual_networks.create_or_update(opts[:rg_name], opts[:name], params)
             vnet.subnets.first
         end
+        # Deletes virtual network
+        # @param [String] rg_name
+        # @param [String] name
         def rm_virtual_network rg_name, name
             network.mgmt.virtual_networks.delete rg_name, name
         end
+        # Creates network interface
+        # @param [String] rg_name - resource group name
+        # @param [String] name - new interface name
+        # @param [Subnet] subnet - Subnet or SubnetRef object
+        # @param [String] location
+        # @param [Boolean] pub_ip - Create Static public IP if true
+        # @param [Array] ports - ports to open by creating NSGs
+        # @return [NetworkInterface]
         def mk_network_interface rg_name, name, subnet, location, pub_ip = false, ports = []
 
             nic = network.mgmt.model_classes.network_interface.new
@@ -333,9 +404,16 @@ module AzureDriver
                 rg_name, name, nic
             )
         end
+        # Returns network interface
+        # @param [String] rg_name - resource group name
+        # @param [String] name - interface name
+        # @return [NetworkInterface]
         def get_network_interface rg_name, name
             network.mgmt.network_interfaces.get rg_name, name
         end
+        # Deletes network interface
+        # @param [String] rg_name - resource group name
+        # @param [String] name - interface name
         def rm_network_interface rg_name, name
             iface = network.mgmt.network_interfaces.get rg_name, name
             
@@ -352,7 +430,9 @@ module AzureDriver
             rescue
             end
         end
-
+        # Returns VirtualMachine IP address by deploy id
+        # @param [String] deploy_id
+        # @return [String]
         def get_virtual_machine_ip deploy_id
             get_virtual_machine(deploy_id).network_profile.network_interfaces.inject([]) do | ips, iface |
                 ips <<  get_network_interface(
@@ -366,6 +446,11 @@ module AzureDriver
             end.flatten.compact.sort_by {| ip | 10 ^ ip.to_i } .reverse
         end
 
+        # Creates Static public IP
+        # @param [String] rg_name - resource group name
+        # @param [String] name - new IP address name
+        # @param [String] location
+        # @return [PublicIPAddress]
         def mk_public_ip rg_name, name, location
             pic = network.mgmt.model_classes.public_ipaddress.new
             pic.location = location
@@ -375,12 +460,27 @@ module AzureDriver
                 rg_name, name, pic
             )
         end
+        # Returns IP address
+        # @param [String] rg_name - resource group name
+        # @param [String] name - IP address name
+        # @return [PublicIPAddress]
         def get_public_ip rg_name, name
             network.mgmt.public_ipaddresses.get rg_name, name
         end
+        # Deletes IP address
+        # @param [String] rg_name - resource group name
+        # @param [String] name - IP address name
         def rm_public_ip rg_name, name
             network.mgmt.public_ipaddresses.delete rg_name, name
         end
+        # Creates NetworkSecurityGroup
+        # @param [String] rg_name - resource group name
+        # @param [String] name - new NSG name
+        # @param [String] location
+        # @param [Array<NSGData>] allow
+        # @param [Array<NSGData>] deny
+        # @see SECURITY_RULES What NSGData is
+        # @return [NetworkSecurityGroup]
         def mk_nsg rg_name, name, location, allow: [], deny: []
             nsg = network.mgmt.model_classes.network_security_group.new
             nsg.location = location
@@ -396,9 +496,17 @@ module AzureDriver
                 rg_name, name, nsg
             )
         end
+        # Deletes NetworkSecurityGroup
+        # @param [String] rg_name - resource group name
+        # @param [String] name - NSG name
         def rm_nsg rg_name, name
             network.mgmt.network_security_groups.delete rg_name, name
         end
+        # Generates NetworkSecurityRule from template
+        # @param [Hash] template - You may use any default template or define yours
+        # @param [String] access - Deny or Allow
+        # @see SECURITY_RULES What NSGData is
+        # @return [SecurityRule]
         def gen_network_security_rule template = {}, access = 'Deny' # | Allow
             nsr = network.mgmt.model_classes.security_rule.new
             AzureDriver::SECURITY_RULES['DEFAULT'].each do | property, value |
@@ -412,10 +520,17 @@ module AzureDriver
             nsr
         end
 
-        def get_virtual_network name, rg_name
+        # Returns VirtualNetwork
+        # @param [String] rg_name - resource group name
+        # @param [String] name - v-net name
+        # @return [VirtualNetwork]
+        def get_virtual_network rg_name, name
             network.mgmt.virtual_networks.get rg_name, name
         end
 
+        # Generates Network Profile from given interface
+        # @param [NetworkInterface] iface
+        # @return [NetworkProfile]
         def generate_network_profile iface
             profile = compute.mgmt.model_classes.network_profile.new
 
@@ -429,6 +544,9 @@ module AzureDriver
         end
 
         ### Monitoring ###
+        # Returns VM monitoring data
+        # @param [String] deploy_id
+        # @return [String, Hash] 
         def poll deploy_id
             begin
                 vm = get_virtual_machine deploy_id
