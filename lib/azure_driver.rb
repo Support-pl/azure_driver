@@ -253,7 +253,7 @@ module AzureDriver
             img_ref.publisher = image[:publisher]
             img_ref.offer = image[:name]
             img_ref.sku = image[:version]
-            img_ref.version = 'latest'
+            img_ref.version = image[:subversion] || 'latest'
             storage_profile.image_reference = img_ref
 
             os_disk = compute.mgmt.model_classes.osdisk.new

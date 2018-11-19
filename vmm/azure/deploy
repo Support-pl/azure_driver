@@ -95,6 +95,7 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
             :publisher => image[0],
             :name => image[1],
             :version => image[2]
+            :subversion => image[3]
         },
         vm['/VM/USER_TEMPLATE/OS_DISK_SIZE'].to_i
     ) 
