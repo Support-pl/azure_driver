@@ -5,11 +5,11 @@
  * Download and unpack or clone the repository
  * Put the directories content in the next way:
    ```bash
-    mv hooks/* ~oneadmin/remotes/hooks
-    mv im/* ~oneadmin/remotes/im
-    mv lib/* /usr/lib/one/ruby
-    mv vmm/* ~oneadmin/remotes/vmm
-    mv etc/* /etc/one
+    cp -rf hooks/* ~oneadmin/remotes/hooks
+    cp -rf im/* ~oneadmin/remotes/im
+    cp -rf lib/* /usr/lib/one/ruby
+    cp -rf vmm/* ~oneadmin/remotes/vmm
+    cp -rf etc/* /etc/one
    ```
    Don't forget to set `chmod +x ` for all executables(vmm/*, im/*, hooks/*)
  * Add the following lines to `oned.conf`
