@@ -28,14 +28,55 @@ end
 
 $: << RUBY_LIB_LOCATION
 
-require 'azure_driver'
+require 'opennebula'
 
-network_id   = ARGV[0]
+network_id  = ARGV[0]
 
-template = OpenNebula::VirtualNetwork.new_with_id(network_id, OpenNebula::Client.new)
-rc = template.info
+vn = OpenNebula::VirtualNetwork.new_with_id(network_id, OpenNebula::Client.new)
+rc = vn.info
 if OpenNebula.is_error?(rc)
     STDERR.puts rc.message
     exit 1
 end
 
+if vn['/VNET/TEMPLATE/VN_MAD'] != 'azure' then
+    puts "Not Azure Network, skipping..."
+    exit 0
+end
+
+# NAME="azure_test_vnet"
+# VN_MAD="azure"
+# BRIDGE="azure_driver"
+# RESOURCE_GROUP="new_group"
+# LOCATION="West Europe"
+# NETWORK_TYPE="PRIVATE"|"PUBLIC"
+
+require 'azure_driver'
+
+rg_name = vn["/VNET/TEMPLATE/RESOURCE_GROUP"]
+location = vn["/VNET/TEMPLATE/LOCATION"]
+host = vn["/VNET/TEMPLATE/HOST"] || 'default'
+
+az_drv = AzureDriver::Client.new(host)
+az_drv.mk_resource_group rg_name, location
+
+if vn["/VNET/TEMPLATE/NETWORK_TYPE"] == "PRIVATE" then
+    subnet = az_drv.mk_virtual_network({
+        :name => 'one-' + vn.id.to_s + '-'+ rg_name + '-private-vnet',
+        :rg_name => rg_name,
+        :location => location,
+        :subnet => "0"
+    })
+    vn.add_ar(
+        'AR=[' \
+        '   IP="10.0.1.4",' \
+        '   SIZE="251",' \
+        '   TYPE="IP4" ]'
+    )
+    puts "Azure Private Network is now created"
+elsif vn["/VNET/TEMPLATE/NETWORK_TYPE"] == "PUBLIC" then
+    puts "Azure Publuc IPs Pool is now created"
+else
+    puts "Network type not detected, deleting..."
+    vn.delete
+end

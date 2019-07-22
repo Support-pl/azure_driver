@@ -78,6 +78,11 @@ module AzureDriver
             "destination_port_ranges" => []
         }
     }
+    DISK_TYPES = {
+        "HDD" => 'Standard_LRS',
+        "SSD" => 'StandardSSD_LRS',
+        "Premium SSD" => 'Premium_LRS'
+    }
 
     class Client < Azure::Profiles::Latest::Client
         # @param [String] subscription - Subscription from azure_driver.conf
@@ -279,11 +284,6 @@ module AzureDriver
                     warn << "NetworkInterface #{iface_name} may be not removed"
                 end
             end
-            begin
-                rm_virtual_network rg_name, rg_name + '-vnet'
-            rescue => e
-                warn << "VirtualNetwork #{rg_name + '-vnet'} may be not removed"
-            end
             return warn.size != 1 ? warn.join("\n") : '-'
         end
 
@@ -295,7 +295,7 @@ module AzureDriver
         # @option image [String] :name - Name
         # @option image [String] :version - SKU
         # @return [StorageProfile]
-        def generate_storage_profile image, disk_size = 30
+        def generate_storage_profile image, disk_size = 30, disk_type = 'HDD'
             storage_profile = compute.mgmt.model_classes.storage_profile.new
 
             img_ref = compute.mgmt.model_classes.image_reference.new
@@ -306,8 +306,11 @@ module AzureDriver
             storage_profile.image_reference = img_ref
 
             os_disk = compute.mgmt.model_classes.osdisk.new
-            os_disk.disk_size_gb = disk_size
-            os_disk.create_option = "FromImage"
+                os_disk.disk_size_gb = disk_size
+                os_disk.create_option = "FromImage"
+            managed_disk_params = compute.mgmt.model_classes.managed_disk_parameters.new
+                managed_disk_params.storage_account_type = DISK_TYPES[disk_type]
+                os_disk.managed_disk = managed_disk_params
             storage_profile.os_disk = os_disk
 
             storage_profile
@@ -354,7 +357,7 @@ module AzureDriver
             params = network.mgmt.model_classes.virtual_network.new
 
             address_space = network.mgmt.model_classes.address_space.new
-            address_space.address_prefixes = opts[:spaces] || ['10.0.0.0/16']
+            address_space.address_prefixes = opts[:spaces] || ['10.0.0.0/8']
             params.address_space = address_space
 
             dhcp_options = network.mgmt.model_classes.dhcp_options.new
@@ -362,8 +365,8 @@ module AzureDriver
             params.dhcp_options = dhcp_options
 
             sub = network.mgmt.model_classes.subnet.new
-            sub.name = opts[:subnet] || 'default'
-            sub.address_prefix = opts[:subnet_prefix] || '10.0.2.0/24'
+            sub.name = opts[:subnet] || '0'
+            sub.address_prefix = opts[:subnet_prefix] || '10.0.1.0/24'
 
             params.subnets = [sub]
 
@@ -386,14 +389,16 @@ module AzureDriver
         # @param [Boolean] pub_ip - Create Static public IP if true
         # @param [Array] ports - ports to open by creating NSGs
         # @return [NetworkInterface]
-        def mk_network_interface rg_name, name, subnet, location, pub_ip = false, ports = []
+        def mk_network_interface rg_name, name, subnet, location, pub_ip = false, ports = [], priv_ip = nil
 
             nic = network.mgmt.model_classes.network_interface.new
 
             ip_conf = network.mgmt.model_classes.network_interface_ipconfiguration.new
             ip_conf.name = rg_name
-            ip_conf.subnet = subnet
-            ip_conf.public_ipaddress = mk_public_ip(rg_name, name.gsub('-iface', '-ip'), location) if pub_ip
+            ip_conf.subnet = subnet if subnet
+            ip_conf.private_ipaddress = priv_ip if priv_ip
+            ip_conf.private_ipallocation_method = "Static"
+            ip_conf.public_ipaddress = get_public_ip(rg_name, pub_ip) if pub_ip
             nic.ip_configurations = [ip_conf]
 
             nic.network_security_group = mk_nsg rg_name, name.gsub('-iface', '-nsg'), location, allow: ports
@@ -422,12 +427,10 @@ module AzureDriver
             
             network.mgmt.network_interfaces.delete rg_name, name
             
-            ip_addresses.each do |ip_address|
-                rm_public_ip *( ip_address.id.split('/').values_at(4, 8) )
-            end
             begin
                 rm_nsg *( nsg.id.split('/').values_at(4, 8) )
-            rescue
+            rescue => e
+                puts e.message
             end
         end
         # Returns VirtualMachine IP address by deploy id
@@ -450,13 +453,15 @@ module AzureDriver
         # @param [String] rg_name - resource group name
         # @param [String] name - new IP address name
         # @param [String] location
+        # @param [Boolean] async - Will be executed asynchroniosly if true
         # @return [PublicIPAddress]
-        def mk_public_ip rg_name, name, location
+        def mk_public_ip rg_name, name, location, async = false
             pic = network.mgmt.model_classes.public_ipaddress.new
             pic.location = location
             pic.public_ipaddress_version = "IPv4"
             pic.public_ipallocation_method = "Static"
-            network.mgmt.public_ipaddresses.create_or_update(
+            network.mgmt.public_ipaddresses.send(
+                "create_or_update#{async ? '_async' : ''}",
                 rg_name, name, pic
             )
         end

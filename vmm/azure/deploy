@@ -35,6 +35,10 @@ id    = ARGV[2]
 vm = OpenNebula::VirtualMachine.new_with_id(id, OpenNebula::Client.new)
 vm.info!
 vm_name = "one-#{id}-#{vm.name}"
+
+user = OpenNebula::User.new_with_id vm['/VM/UID'].to_i, OpenNebula::Client.new
+user.info!
+
 lcm_state = vm.lcm_state_str
 deploy_id = vm.deploy_id
 
@@ -49,8 +53,7 @@ user_template = vm.to_hash['VM']['USER_TEMPLATE']
 cloud = user_template['PUBLIC_CLOUD']
 cloud = cloud.detect { | template | template['TYPE'] == 'AZURE' } if cloud.class == Array
 
-rg_name = cloud["RESOURCE_GROUP"]
-subnet = cloud["SUBNET"]
+rg_name = 'one-' + user.id.to_s + '-' + user.name
 location = cloud["LOCATION"].downcase.delete(' ')
 
 if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '--')) || lcm_state == 'BOOT_FAILURE' then
@@ -70,23 +73,60 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
 
     # Create resource group
     az_drv.mk_resource_group rg_name, location
-    # Create vnet
-    subnet = az_drv.mk_virtual_network({
-        :location => location,
-        :rg_name => rg_name,
-        :name => rg_name + '-vnet',
-        :subnet => subnet
-    })
+    
+    network_type = ->(id){
+        vn = OpenNebula::VirtualNetwork.new_with_id(id, OpenNebula::Client.new)
+        vn.info!
+        vn['/VNET/TEMPLATE/NETWORK_TYPE']
+    }
+    az_network_name = ->(id){
+        vn = OpenNebula::VirtualNetwork.new_with_id(id, OpenNebula::Client.new)
+        vn.info!
+        "one-#{vn.id}-#{vn['/VNET/TEMPLATE/RESOURCE_GROUP']}-private-vnet"
+    }
+    az_ip_name = ->(id, ar_id){
+        vn = OpenNebula::VirtualNetwork.new_with_id(id, OpenNebula::Client.new)
+        vn.info!
+        ar = vn.to_hash['VNET']['AR_POOL']['AR']
+        ar.class == Hash ? ar = [ar] : ar
+        ar.select{|addr| addr['AR_ID'] == ar_id.to_s}.last['AZ_NAME']
+    }
+
+    nics = vm.to_hash['VM']['TEMPLATE']['NIC']
+    if nics.nil? then
+        STDERR.puts "Azure VM must have at least one NIC!"; exit(-1)
+    elsif nics.class == Array then
+        if nics.size < 1 || nics.size > 2 then
+            STDERR.puts "Azure VM cannot have more than two NIC!"; exit(-1)
+        end
+        if network_type.call(nics.first['NETWORK_ID']) == network_type.call(nics.last['NETWORK_ID']) then
+            STDERR.puts "Azure VM cannot have more than one NIC of each type(PUBLIC/PRIVATE)"; exit(-1)
+        end
+    elsif nics.class == Hash then
+        nics = [nics]
+    end
+
+    subnet = private_ip = public_ip = nil
+    nics.each do | nic |
+        if network_type.call(nic['NETWORK_ID']) == 'PRIVATE' then
+            vn = az_drv.get_virtual_network rg_name, az_network_name.call(nic['NETWORK_ID'])
+            subnet = vn.subnets.select { |sub| sub.name == nic['AR_ID'] }.last
+            private_ip = nic['IP']
+        elsif network_type.call(nic['NETWORK_ID']) == 'PUBLIC' then
+            public_ip = az_ip_name.call(nic['NETWORK_ID'], nic['AR_ID'])
+        else
+            STDERR.puts "Attached VirtualNetwork has no type!"
+            exit -1
+        end
+    end
+
 
     # Create iface
-    iface = az_drv.mk_network_interface(
-        rg_name, 
-        (vm_name + '-iface'), 
-        subnet, 
-        location, 
-        user_template['PUBLIC_IP'] == 'YES' ? true : false, # Public IP true/false
-        user_template['ALLOW_PORTS'].split(',').map!{|el| el.delete(' ')} # Allowed ports array for NSG creation
-    )
+    iface = [
+        rg_name, (vm_name + '-iface'), subnet, location, public_ip, 
+        user_template['ALLOW_PORTS'].split(',').map!{|el| el.delete(' ')}, private_ip
+    ]
+    iface = az_drv.mk_network_interface(*iface)
     # Create net profile
     network_profile = az_drv.generate_network_profile iface
     # Create storage profile
@@ -98,18 +138,22 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
             :version => image[2],
             :subversion => image[3]
         },
-        vm['/VM/USER_TEMPLATE/OS_DISK_SIZE'].to_i
+        vm['/VM/USER_TEMPLATE/OS_DISK_SIZE'].to_i,
+        vm['/VM/USER_TEMPLATE/DRIVE']
     ) 
 
     # Create VM
     begin
-        puts az_drv.mk_virtual_machine({
+        deploy_id = az_drv.mk_virtual_machine({
             :name => vm_name, :rg_name => rg_name, :location => location,
             :plan => cloud['INSTANCE_TYPE'], :hostname => "#{image[1].downcase}",
             :username => cloud['VM_USER'], :passwd => cloud['VM_PASSWORD'], 
             :network_profile => network_profile, :storage_profile => storage_profile
         }).vm_id
+        puts deploy_id
         vm.resched
+
+        ip = az_drv.get_virtual_machine_ip(deploy_id).select{|ip| ip[0..2] == "10." }.last
     rescue => e
         STDERR.puts "Error deploying Azure VM: #{e.message}\nBackTrace:\n#{e.backtrace}"
         exit -1
