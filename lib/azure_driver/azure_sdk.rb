@@ -12,5 +12,6 @@ require 'azure_mgmt_network'
 require 'azure_mgmt_resources'
 require 'azure_mgmt_storage'
 require 'azure_mgmt_subscriptions'
+require 'azure_mgmt_consumption'
 
 require "#{RUBY_LIB_LOCATION}/azure_driver/latest/latest_profile_client.rb"

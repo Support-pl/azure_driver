@@ -13,6 +13,7 @@ require 'latest/modules/network_profile_module'
 require 'latest/modules/resources_profile_module'
 require 'latest/modules/storage_profile_module'
 require 'latest/modules/subscriptions_profile_module'
+require 'latest/modules/consumption_profile_module'
 
 module Azure::Profiles::Latest
   #
@@ -21,7 +22,7 @@ module Azure::Profiles::Latest
   class Client
     include MsRestAzure::Common::Configurable
 
-    attr_reader :authorization, :billing, :compute, :monitor, :network, :resources, :storage, :subscriptions
+    attr_reader :authorization, :billing, :compute, :monitor, :network, :resources, :storage, :subscriptions, :consumption
 
     #
     # Initializes a new instance of the Client class.
@@ -61,6 +62,7 @@ module Azure::Profiles::Latest
       @resources = ResourcesAdapter.new(self, base_url, sdk_options)
       @storage = StorageAdapter.new(self, base_url, sdk_options)
       @subscriptions = SubscriptionsAdapter.new(self, base_url, sdk_options)
+      @consumption = ConsumptionAdapter.new(self, base_url, sdk_options)
     end
 
     class AuthorizationAdapter
@@ -124,6 +126,14 @@ module Azure::Profiles::Latest
 
       def initialize(context, base_url, options)
         @mgmt = Azure::Profiles::Latest::Subscriptions::Mgmt::SubscriptionsManagementClass.new(context, base_url, options)
+      end
+    end
+
+    class ConsumptionAdapter
+      attr_accessor :mgmt
+
+      def initialize(context, base_url, options)
+        @mgmt = Azure::Profiles::Latest::Consumption::Mgmt::ConsumptionManagementClass.new(context, base_url, options)
       end
     end
   end
