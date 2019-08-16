@@ -32,14 +32,15 @@ deploy_id = ARGV[0]
 host      = ARGV[1]
 vm_id     = ARGV[-2]
 
+vm = OpenNebula::VirtualMachine.new_with_id vm_id, OpenNebula::Client.new
+vm.info!
+host = AzureDriver.vm_host vm
 az_drv = AzureDriver::Client.new(host)
 
 if deploy_id == '-' then
     deploy_id = az_drv.get_vm_deploy_id_by_one_id vm_id
 end
 
-vm = OpenNebula::VirtualMachine.new_with_id vm_id, OpenNebula::Client.new
-vm.info!
 lcm_state = vm.lcm_state_str
 
 begin

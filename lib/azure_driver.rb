@@ -28,9 +28,6 @@ end
 
 $: << RUBY_LIB_LOCATION
 
-AZ_DRIVER_CONF = "#{ETC_LOCATION}/azure_driver.conf"
-AZ_DRIVER_DEFAULT = "#{ETC_LOCATION}/azure_driver.default"
-
 require 'yaml'
 require 'ms_rest_azure'
 require 'azure_driver/azure_sdk' # Azure SDK Minimal (auth, billing, compute, monitor, network, resources, storage, subscriptions)
@@ -84,16 +81,23 @@ module AzureDriver
         "Premium SSD" => 'Premium_LRS'
     }
 
+    def self.vm_host vm
+        history = vm.to_hash['VM']["HISTORY_RECORDS"]['HISTORY'] # Searching hostname at VM allocation history
+        history = history.last if history.class == Array # If history consists of 2 or more lines - returns last
+        return history['HID']
+      rescue
+        return nil # Returns NilClass if did not found anything - possible if vm is at HOLD or PENDING state
+    end
+
     class Client < Azure::Profiles::Latest::Client
         # @param [String] subscription - Subscription from azure_driver.conf
-        def initialize(subscription = 'default')
-            @account = YAML::load(File.read(AZ_DRIVER_CONF))
-            _subscriptions = @account['subscriptions']
-            _az = _subscriptions[subscription] || _subscriptions['default']
-            subscription_id = _az['subscription_id']
-            tenant_id = _az['tenant_id']
-            client_id = _az['client_id']
-            client_secret = _az['client_secret']
+        def initialize host
+            host = OpenNebula::Host.new_with_id(host, OpenNebula::Client.new)
+            host.info!
+            subscription_id = host['TEMPLATE/SUBSCRIPTION_ID']
+            tenant_id = host['TEMPLATE/TENANT_ID']
+            client_id = host['TEMPLATE/CLIENT_ID']
+            client_secret = host['TEMPLATE/CLIENT_SECRET']
             provider = MsRestAzure::ApplicationTokenProvider.new(
                 tenant_id, #ENV['AZURE_TENANT_ID'],
                 client_id, #ENV['AZURE_CLIENT_ID'],
@@ -593,14 +597,14 @@ module AzureDriver
                 disk_wiops = disk_wiops.nil? ? 0.0 : disk_wiops.average * 60
                 
         
-                info =  "#{AzureDriver::POLL_ATTRIBUTE[:cpu]}=#{cpu * 10} " \
-                        "#{AzureDriver::POLL_ATTRIBUTE[:memory]}=#{memory * 1024} " \
-                        "#{AzureDriver::POLL_ATTRIBUTE[:netrx]}=#{netrx} " \
-                        "#{AzureDriver::POLL_ATTRIBUTE[:nettx]}=#{nettx} " \
-                        "DISKRDBYTES=#{disk_rbytes} " \
-                        "DISKWRBYTES=#{disk_wbytes} " \
-                        "DISKRDIOPS=#{disk_riops} " \
-                        "DISKWRIOPS=#{disk_wiops} " \
+                info =  "#{AzureDriver::POLL_ATTRIBUTE[:cpu]}=#{(cpu * 10).round(2)} " \
+                        "#{AzureDriver::POLL_ATTRIBUTE[:memory]}=#{(memory * 1024).round(2)} " \
+                        "#{AzureDriver::POLL_ATTRIBUTE[:netrx]}=#{netrx.round(2)} " \
+                        "#{AzureDriver::POLL_ATTRIBUTE[:nettx]}=#{nettx.round(2)} " \
+                        "DISKRDBYTES=#{disk_rbytes.round(2)} " \
+                        "DISKWRBYTES=#{disk_wbytes.round(2)} " \
+                        "DISKRDIOPS=#{disk_riops.round(2)} " \
+                        "DISKWRIOPS=#{disk_wiops.round(2)} " \
                         "RESOURCE_GROUP_NAME=#{rg_name.downcase} " \
                         "GUEST_IP_ADDRESSES=\\\"#{get_virtual_machine_ip(deploy_id).join(',')}\\\""
                         "MONITORING_TIME=#{Time.now.to_i}"

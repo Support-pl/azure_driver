@@ -60,7 +60,8 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
 
     require 'azure_driver'
 
-    az_drv = AzureDriver::Client.new(host)
+    host_id = AzureDriver.vm_host vm
+    az_drv = AzureDriver::Client.new host_id
 
     conf =
     "CONTEXT=[\n" \
@@ -161,7 +162,9 @@ if (lcm_state == 'BOOT' && (deploy_id.nil? || deploy_id == "" || deploy_id == '-
 elsif deploy_id then
     require 'azure_driver'
 
-    az_drv = AzureDriver::Client.new(host)
+    host_id = AzureDriver.vm_host vm
+    az_drv = AzureDriver::Client.new host_id
+    
     if deploy_id == '-' then
         deploy_id = az_drv.get_vm_deploy_id_by_one_id id
     end

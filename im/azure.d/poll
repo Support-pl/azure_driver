@@ -40,8 +40,7 @@ exit 0 if vms.empty?
 
 require 'azure_driver'
 
-subscription = host.to_hash['HOST']['TEMPLATE']['SUBSCRIPTION']	|| 'default'
-az_drv = AzureDriver::Client.new(subscription)
+az_drv = AzureDriver::Client.new(ARGV[-2])
 
 ### Getting and Emulating Subscription Info ###
 
