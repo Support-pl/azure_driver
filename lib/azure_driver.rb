@@ -182,13 +182,10 @@ module AzureDriver
             if rm_disk then
                 vm = compute.mgmt.virtual_machines.list(rg_name).detect { |vm| vm.name == name }
                 disk_name = vm.storage_profile.os_disk.name
-
                 compute.mgmt.virtual_machines.delete rg_name, name
-
                 rm_virtual_machine_disk( rg_name, disk_name )
             else
                 compute.mgmt.virtual_machines.delete rg_name, name
-
             end
         end
 
@@ -284,7 +281,7 @@ module AzureDriver
             ifaces.each do | iface_name |
                 begin
                     rm_network_interface rg_name, iface_name
-                rescue => e
+                rescue
                     warn << "NetworkInterface #{iface_name} may be not removed"
                 end
             end
@@ -426,13 +423,13 @@ module AzureDriver
         def rm_network_interface rg_name, name
             iface = network.mgmt.network_interfaces.get rg_name, name
 
-            ip_addresses = iface.ip_configurations.collect{ |ip_conf| ip_conf.public_ipaddress }
+            iface.ip_configurations.collect{ |ip_conf| ip_conf.public_ipaddress }
             nsg = iface.network_security_group
 
             network.mgmt.network_interfaces.delete rg_name, name
 
             begin
-                rm_nsg *( nsg.id.split('/').values_at(4, 8) )
+                rm_nsg( *( nsg.id.split('/').values_at(4, 8) ))
             rescue => e
                 puts e.message
             end
@@ -558,85 +555,83 @@ module AzureDriver
         # @return [String, Hash]
         def poll deploy_id
 
-                vm = get_virtual_machine deploy_id
-                rg_name = get_vm_rg_name vm
-                instance = compute.mgmt.virtual_machines.get(
-                    rg_name, vm.name, expand:'instanceView'
-                )
+            vm = get_virtual_machine deploy_id
+            rg_name = get_vm_rg_name vm
+            instance = compute.mgmt.virtual_machines.get(
+                rg_name, vm.name, expand:'instanceView'
+            )
 
-                cpu = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Percentage CPU', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
-                cpu = cpu.nil? ? 0 : cpu.average
+            cpu = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Percentage CPU', result_type: 'Data'
+            ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
+            cpu = cpu.nil? ? 0 : cpu.average
 
-                memory = 768
-                nettx = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Network In', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last
-                nettx = nettx.nil? ? 0 : nettx.total
+            memory = 768
+            nettx = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Network In', result_type: 'Data'
+            ).value.first.timeseries.first.data.select { |data| data.total != nil }.last
+            nettx = nettx.nil? ? 0 : nettx.total
 
-                netrx = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Network Out', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.total != nil }.last
-                netrx = netrx.nil? ? 0 : netrx.total
+            netrx = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Network Out', result_type: 'Data'
+            ).value.first.timeseries.first.data.select { |data| data.total != nil }.last
+            netrx = netrx.nil? ? 0 : netrx.total
 
-                disk_rbytes = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Disk Read Bytes', result_type: 'Data'
-                ).value.first.timeseries.first.data.last.total.to_f
-                disk_wbytes = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Disk Write Bytes', result_type: 'Data'
-                ).value.first.timeseries.first.data.last.total.to_f
-                disk_riops = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Disk Read Operations/Sec', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
-                disk_riops = disk_riops.nil? ? 0.0 : disk_riops.average * 60
+            disk_rbytes = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Disk Read Bytes', result_type: 'Data'
+            ).value.first.timeseries.first.data.last.total.to_f
+            disk_wbytes = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Disk Write Bytes', result_type: 'Data'
+            ).value.first.timeseries.first.data.last.total.to_f
+            disk_riops = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Disk Read Operations/Sec', result_type: 'Data'
+            ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
+            disk_riops = disk_riops.nil? ? 0.0 : disk_riops.average * 60
 
-                disk_wiops = monitor.mgmt.metrics.list(
-                    vm.id, metricnames: 'Disk Write Operations/Sec', result_type: 'Data'
-                ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
-                disk_wiops = disk_wiops.nil? ? 0.0 : disk_wiops.average * 60
+            disk_wiops = monitor.mgmt.metrics.list(
+                vm.id, metricnames: 'Disk Write Operations/Sec', result_type: 'Data'
+            ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
+            disk_wiops = disk_wiops.nil? ? 0.0 : disk_wiops.average * 60
 
 
-                info =  "#{AzureDriver::POLL_ATTRIBUTE[:cpu]}=#{(cpu * 10).round(2)} " \
-                        "#{AzureDriver::POLL_ATTRIBUTE[:memory]}=#{(memory * 1024).round(2)} " \
-                        "#{AzureDriver::POLL_ATTRIBUTE[:netrx]}=#{netrx.round(2)} " \
-                        "#{AzureDriver::POLL_ATTRIBUTE[:nettx]}=#{nettx.round(2)} " \
-                        "DISKRDBYTES=#{disk_rbytes.round(2)} " \
-                        "DISKWRBYTES=#{disk_wbytes.round(2)} " \
-                        "DISKRDIOPS=#{disk_riops.round(2)} " \
-                        "DISKWRIOPS=#{disk_wiops.round(2)} " \
-                        "RESOURCE_GROUP_NAME=#{rg_name.downcase} " \
-                        "GUEST_IP_ADDRESSES=\\\"#{get_virtual_machine_ip(deploy_id).join(',')}\\\""
-                        "MONITORING_TIME=#{Time.now.to_i}"
+            info =  "#{AzureDriver::POLL_ATTRIBUTE[:cpu]}=#{(cpu * 10).round(2)} " \
+                    "#{AzureDriver::POLL_ATTRIBUTE[:memory]}=#{(memory * 1024).round(2)} " \
+                    "#{AzureDriver::POLL_ATTRIBUTE[:netrx]}=#{netrx.round(2)} " \
+                    "#{AzureDriver::POLL_ATTRIBUTE[:nettx]}=#{nettx.round(2)} " \
+                    "DISKRDBYTES=#{disk_rbytes.round(2)} " \
+                    "DISKWRBYTES=#{disk_wbytes.round(2)} " \
+                    "DISKRDIOPS=#{disk_riops.round(2)} " \
+                    "DISKWRIOPS=#{disk_wiops.round(2)} " \
+                    "RESOURCE_GROUP_NAME=#{rg_name.downcase} " \
+                    "GUEST_IP_ADDRESSES=\\\"#{get_virtual_machine_ip(deploy_id).join(',')}\\\""
+                    "MONITORING_TIME=#{Time.now.to_i}"
 
-                state = ""
-                if !instance
-                    state = VM_STATE[:error]
+            state = ""
+            if !instance
+                state = VM_STATE[:error]
+            else
+                state = case instance.instance_view.statuses.last.code.split('/').last
+                when "running", "starting"
+                    AzureDriver::VM_STATE[:active]
+                when "stopped", "deallocated"
+                    state = AzureDriver::VM_STATE[:deleted]
                 else
-                    state = case instance.instance_view.statuses.last.code.split('/').last
-                    when "running", "starting"
-                        AzureDriver::VM_STATE[:active]
-                    when "stopped", "deallocated"
-                        state = AzureDriver::VM_STATE[:deleted]
-                    else
-                        AzureDriver::VM_STATE[:unknown]
-                    end
+                    AzureDriver::VM_STATE[:unknown]
                 end
+            end
 
 
-                info = "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{state} " + info
+            info = "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{state} " + info
 
-                return info, {
-                    :cpu => cpu, :memory => memory,
-                    :nettx => nettx, :netrx => netrx,
-                    :disk_rbytes => disk_rbytes, :disk_wbytes => disk_wbytes,
-                    :state => state }
-
-            rescue => e
-            # Unknown state if exception occurs retrieving information from
-            # an instance
-                "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{AzureDriver::VM_STATE[:unknown]} POLL_ERROR=#{e.message}"
-
+            return info, {
+                :cpu => cpu, :memory => memory,
+                :nettx => nettx, :netrx => netrx,
+                :disk_rbytes => disk_rbytes, :disk_wbytes => disk_wbytes,
+                :state => state }
+        rescue => e
+        # Unknown state if exception occurs retrieving information from
+        # an instance
+            "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{AzureDriver::VM_STATE[:unknown]} POLL_ERROR=#{e.message}"
         end
     end
 end
