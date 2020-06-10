@@ -129,11 +129,11 @@ module AzureDriver
         # @option opts [String] :username - VM OS user name(remember to not use reserved names such as root, admin and etc...)
         # @option opts [String] :passwd - Password for OS user
         # @option opts [String] :hostname
-        # @option opts [String] :plan - SKU name 
+        # @option opts [String] :plan - SKU name
         # @option opts [String] :location
         # @option opts [NetworkProfile] :network_profile
         # @see generate_network_profile For :network_profile option
-        # @option opts [StorageProfile] :storage_profile 
+        # @option opts [StorageProfile] :storage_profile
         # @see generate_storage_profile For :storage_profile option
         # @return [VirtualMachine]
         # @todo Add SSH-keys support
@@ -184,7 +184,7 @@ module AzureDriver
                 disk_name = vm.storage_profile.os_disk.name
 
                 compute.mgmt.virtual_machines.delete rg_name, name
-                
+
                 rm_virtual_machine_disk( rg_name, disk_name )
             else
                 compute.mgmt.virtual_machines.delete rg_name, name
@@ -214,7 +214,7 @@ module AzureDriver
         # @param [String] location
         # @return [VirtualMachineSize]
         def get_virtual_machine_size size_name, location
-            compute.mgmt.virtual_machine_sizes.list( location ).value.detect do |size| 
+            compute.mgmt.virtual_machine_sizes.list( location ).value.detect do |size|
                 size.name == size_name
             end
         end
@@ -348,11 +348,11 @@ module AzureDriver
 
         ### Virtual Networks ###
         # @param [Hash] opts
-        # @option opts [String] :name - 
-        # @option opts [String] :rg_name - 
+        # @option opts [String] :name -
+        # @option opts [String] :rg_name -
         # @option opts [String] :subnet - (Optional)
         # @option opts [String] :subnet_prefix - (Optional)
-        # @option opts [String] :location - 
+        # @option opts [String] :location -
         # @option opts [Array] :prefixes - (Optional)
         # @option opts [Array] :dns - (Optional)
         # @return [VirtualNetwork]
@@ -425,12 +425,12 @@ module AzureDriver
         # @param [String] name - interface name
         def rm_network_interface rg_name, name
             iface = network.mgmt.network_interfaces.get rg_name, name
-            
+
             ip_addresses = iface.ip_configurations.collect{ |ip_conf| ip_conf.public_ipaddress }
             nsg = iface.network_security_group
-            
+
             network.mgmt.network_interfaces.delete rg_name, name
-            
+
             begin
                 rm_nsg *( nsg.id.split('/').values_at(4, 8) )
             rescue => e
@@ -555,20 +555,20 @@ module AzureDriver
         ### Monitoring ###
         # Returns VM monitoring data
         # @param [String] deploy_id
-        # @return [String, Hash] 
+        # @return [String, Hash]
         def poll deploy_id
-            begin
+
                 vm = get_virtual_machine deploy_id
                 rg_name = get_vm_rg_name vm
                 instance = compute.mgmt.virtual_machines.get(
                     rg_name, vm.name, expand:'instanceView'
                 )
-        
+
                 cpu = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Percentage CPU', result_type: 'Data'
                 ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
                 cpu = cpu.nil? ? 0 : cpu.average
-                
+
                 memory = 768
                 nettx = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Network In', result_type: 'Data'
@@ -590,13 +590,13 @@ module AzureDriver
                     vm.id, metricnames: 'Disk Read Operations/Sec', result_type: 'Data'
                 ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
                 disk_riops = disk_riops.nil? ? 0.0 : disk_riops.average * 60
-                
+
                 disk_wiops = monitor.mgmt.metrics.list(
                     vm.id, metricnames: 'Disk Write Operations/Sec', result_type: 'Data'
                 ).value.first.timeseries.first.data.select { |data| data.average != nil }.last
                 disk_wiops = disk_wiops.nil? ? 0.0 : disk_wiops.average * 60
-                
-        
+
+
                 info =  "#{AzureDriver::POLL_ATTRIBUTE[:cpu]}=#{(cpu * 10).round(2)} " \
                         "#{AzureDriver::POLL_ATTRIBUTE[:memory]}=#{(memory * 1024).round(2)} " \
                         "#{AzureDriver::POLL_ATTRIBUTE[:netrx]}=#{netrx.round(2)} " \
@@ -608,7 +608,7 @@ module AzureDriver
                         "RESOURCE_GROUP_NAME=#{rg_name.downcase} " \
                         "GUEST_IP_ADDRESSES=\\\"#{get_virtual_machine_ip(deploy_id).join(',')}\\\""
                         "MONITORING_TIME=#{Time.now.to_i}"
-                
+
                 state = ""
                 if !instance
                     state = VM_STATE[:error]
@@ -622,21 +622,21 @@ module AzureDriver
                         AzureDriver::VM_STATE[:unknown]
                     end
                 end
-        
-        
+
+
                 info = "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{state} " + info
-        
-                return info, { 
-                    :cpu => cpu, :memory => memory, 
-                    :nettx => nettx, :netrx => netrx, 
+
+                return info, {
+                    :cpu => cpu, :memory => memory,
+                    :nettx => nettx, :netrx => netrx,
                     :disk_rbytes => disk_rbytes, :disk_wbytes => disk_wbytes,
                     :state => state }
-        
+
             rescue => e
             # Unknown state if exception occurs retrieving information from
             # an instance
                 "#{AzureDriver::POLL_ATTRIBUTE[:state]}=#{AzureDriver::VM_STATE[:unknown]} POLL_ERROR=#{e.message}"
-            end
+
         end
     end
 end
