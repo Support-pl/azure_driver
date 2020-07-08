@@ -87,7 +87,7 @@ client = Azure::Compute::Profiles::Latest::Mgmt::Client.new(@options)
 ####
 
 size = client.virtual_machine_sizes.list( location ).value.detect do |size| 
-    size.name == size_name
+    size.name.downcase == size_name.downcase
 end
 
 capacity_template =
