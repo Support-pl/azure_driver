@@ -60,7 +60,7 @@ vm.hold
 
 ### Set Azure ###
 @account = YAML::load(File.read(AZ_DRIVER_CONF))
-_regions = @account['regions']
+_regions = @account['subscriptions']
 _az = _regions['default']
 subscription_id = _az['subscription_id']
 tenant_id = _az['tenant_id']
@@ -79,7 +79,7 @@ credentials = MsRest::TokenCredentials.new(provider)
     client_id: client_id,
     client_secret: client_secret,
     subscription_id: subscription_id ,
-     credentials: credentials
+    credentials: credentials
 }
 
 client = Azure::Compute::Profiles::Latest::Mgmt::Client.new(@options)
