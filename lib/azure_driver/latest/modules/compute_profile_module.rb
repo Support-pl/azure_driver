@@ -246,7 +246,6 @@ module Azure::Profiles::Latest
         RollingUpgradeStatusCode = Azure::Compute::Mgmt::V2018_06_01::Models::RollingUpgradeStatusCode
         RollingUpgradeActionType = Azure::Compute::Mgmt::V2018_06_01::Models::RollingUpgradeActionType
         IntervalInMins = Azure::Compute::Mgmt::V2018_06_01::Models::IntervalInMins
-        ScaleTier = Azure::Compute::Mgmt::V2018_06_01::Models::ScaleTier
         AggregatedReplicationState = Azure::Compute::Mgmt::V2018_06_01::Models::AggregatedReplicationState
         ReplicationState = Azure::Compute::Mgmt::V2018_06_01::Models::ReplicationState
         HostCaching = Azure::Compute::Mgmt::V2018_06_01::Models::HostCaching
