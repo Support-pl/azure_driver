@@ -56,6 +56,18 @@
         arguments = "$ID"
     ]
     ```
+ * Install gems:
+ ```
+   gem 'azure_mgmt_authorization'
+   gem 'azure_mgmt_billing'
+   gem 'azure_mgmt_compute'
+   gem 'azure_mgmt_monitor'
+   gem 'azure_mgmt_network'
+   gem 'azure_mgmt_resources'
+   gem 'azure_mgmt_storage'
+   gem 'azure_mgmt_subscriptions'
+   gem 'azure_mgmt_consumption'
+ ```
  * Restart OpenNebula from CLI `systemctl restart opennebula`
  * Fill `azure_driver.conf` with your Azure subscription(s) data
 
