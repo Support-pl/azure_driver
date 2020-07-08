@@ -3,17 +3,16 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 
 
-require 'latest/module_definition'
+require "#{RUBY_LIB_LOCATION}/azure_driver/latest/module_definition"
 
-require 'latest/modules/authorization_profile_module'
-require 'latest/modules/billing_profile_module'
-require 'latest/modules/compute_profile_module'
-require 'latest/modules/monitor_profile_module'
-require 'latest/modules/network_profile_module'
-require 'latest/modules/resources_profile_module'
-require 'latest/modules/storage_profile_module'
-require 'latest/modules/subscriptions_profile_module'
-require 'latest/modules/consumption_profile_module'
+modules = %w(
+  authorization_profile_module billing_profile_module compute_profile_module
+  monitor_profile_module network_profile_module resources_profile_module
+  storage_profile_module subscriptions_profile_module consumption_profile_module
+)
+for mod in modules do
+  require "#{RUBY_LIB_LOCATION}/azure_driver/latest/modules/#{mod}"
+end
 
 module Azure::Profiles::Latest
   #
